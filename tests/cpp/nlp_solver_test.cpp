@@ -144,8 +144,8 @@ TEST(LineSearchTest, 2DFunction) {
 
 
 
-torch::Tensor func(const torch::Tensor& x, const torch::Tensor& params) {
-
+torch::Tensor func(const torch::Tensor& x, const torch::Tensor& params) 
+{
     int M = x.size(0);
     auto y = torch::zeros({M, 2}, torch::dtype(torch::kFloat64));
     auto x1 = x.index({Slice(), 0});
