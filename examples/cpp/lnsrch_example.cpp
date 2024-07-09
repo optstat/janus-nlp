@@ -163,7 +163,7 @@ void test_cubic()
 void test_2d()
 {
     // Parameters for the quadratic function
-    int M = 1;
+    int M = 10;
     //create empty parameters
     auto params = torch::empty({M, 1}, torch::kDouble);
 

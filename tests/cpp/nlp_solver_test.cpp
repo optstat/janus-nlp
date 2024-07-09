@@ -100,7 +100,7 @@ TEST(LineSearchTest, Cubic) {
 
 TEST(LineSearchTest, 2DFunction) {
     // Parameters for the quadratic function
-    int M = 1;
+    int M = 10;
     //create empty parameters
     auto params = torch::empty({M, 1}, torch::kDouble);
 
@@ -137,16 +137,56 @@ TEST(LineSearchTest, 2DFunction) {
     std::cout << "Check: " << check_new << std::endl;
     std::cout << "Solution error" << janus::Jfunc(func2d(x_new, params)) << std::endl;
     std::cout << "J0 = " << J0 << std::endl;
-    std::cout << "J_new = " << J_new << std::endl;
-    EXPECT_TRUE((J_new < J0).all().item<bool>());*/
+    std::cout << "J_new = " << J_new << std::endl;*/
+    EXPECT_TRUE((J_new < J0).all().item<bool>());
 
 }
 
 
 
+torch::Tensor func(const torch::Tensor& x, const torch::Tensor& params) {
+
+    int M = x.size(0);
+    auto y = torch::zeros({M, 2}, torch::dtype(torch::kFloat64));
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    y.index_put_({Slice(), 0}, x2.pow(2)+x1.pow(2)-4.0);
+    y.index_put_({Slice(), 1}, x2-x1.exp());
+    return y;
+}
+
+torch::Tensor jac(const torch::Tensor& x, const torch::Tensor& params) {
+    int M = x.size(0);
+    torch::Tensor jac = torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64));
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    jac.index_put_({Slice(), 0, 0}, 2*x1);
+    jac.index_put_({Slice(), 0, 1}, 2*x2);
+    jac.index_put_({Slice(), 1, 0}, -x1.exp());
+    jac.index_put_({Slice(), 1, 1}, 1.0);
+    return jac;
+}
 
 
-
+TEST(NewtGlobalTest, 2DFunction) {
+  int M =10;
+  torch::Tensor x0 = torch::ones({M, 2}, torch::dtype(torch::kFloat64));
+  for ( int i=0; i < M; i++) {
+    x0.index_put_({i, 0}, 2.0+0.1*i);
+    x0.index_put_({i, 1}, 1.0+0.1*i);
+  }
+  torch::Tensor params = torch::zeros({M, 2}, torch::dtype(torch::kFloat64));
+  auto res = newtTe(x0, params, func, jac);
+  auto roots = std::get<0>(res);
+  auto check = std::get<1>(res);
+  auto errors = Jfunc(func(roots, params));
+  auto sols = torch::zeros_like(errors);
+  
+  //std::cout << "Root=" << roots << std::endl;
+  //std::cout << "Check=" << check << std::endl;
+  //std::cout << "Error=" << Jfunc(func(roots, params)) << std::endl;
+  EXPECT_TRUE(torch::allclose(errors, sols));
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
