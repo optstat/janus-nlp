@@ -3,10 +3,10 @@
 #include <torch/torch.h>
 #include <iostream>
 #include <chrono>
-#include "lu.hpp"
-#include "qrte.hpp"
-#include "lnsrch.hpp"
-#include "janus_util.hpp"
+#include <janus/lute.hpp>
+#include <janus/qrte.hpp>
+#include "lnsrchTe.hpp"
+#include <janus/janus_util.hpp>
 namespace janus
 {
 
@@ -64,7 +64,7 @@ namespace janus
             //auto [qt, r] = qrte(jac.index({check}).contiguous()); // This needs to be replaced with GMRES for vey high dimensional systems
             auto jacm2 = jac.index({m2}).contiguous();
             //auto [qt, r] = qrte(jacm2);
-            auto [LU, P] = lu(jacm2);
+            auto [LU, P] = LUTe(jacm2);
             auto pm2 = -f.index({m2}).contiguous();
             auto sollu = solveluv(LU, P, pm2);
             //auto sol = qrtesolvev(qt, r, pm2);

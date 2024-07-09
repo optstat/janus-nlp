@@ -4,7 +4,7 @@
 #include <torch/torch.h>
 #include <iostream>
 #include <initializer_list>
-#include "janus_util.hpp"
+#include <janus/janus_util.hpp>
 namespace janus
 {
 
