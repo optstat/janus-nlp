@@ -2,9 +2,9 @@
 #include <iostream>
 #include <chrono>
 #include <functional>
-#include "lnsrch.hpp"
-#include "lu.hpp"
-#include "janus_util.hpp"
+#include "../../src/cpp/lnsrchTe.hpp"
+#include <janus/lute.hpp>
+#include <janus/janus_util.hpp>
 using Slice = torch::indexing::Slice;
 
 /**
