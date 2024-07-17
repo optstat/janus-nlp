@@ -32,6 +32,8 @@ namespace janus
                                                                                     torch::Tensor &p,
                                                                                     torch::Tensor &stpmax,
                                                                                     torch::Tensor &params,
+                                                                                    const torch::Tensor &xmin,
+                                                                                    const torch::Tensor &xmax,
                                                                                     std::function<torch::Tensor(torch::Tensor &, torch::Tensor &)> func)
     {
         const torch::Tensor ALF = torch::tensor({1.0e-4}, torch::dtype(torch::kFloat64)).to(xold.device());
@@ -40,7 +42,9 @@ namespace janus
         torch::Tensor x = xold.clone();
         int M = xold.size(0); // Number of samples
         int N = xold.size(1); // Number of dimensions
-        assert(xold.size(0) == fold.size(0) && xold.size(0) == g.size(0) && xold.size(0) == p.size(0) && "All inputs must have the same batch size");
+        assert(xold.size(0) == fold.size(0) && xold.size(0) == g.size(0) 
+                                            && xold.size(0) == p.size(0) 
+                                            && "All inputs must have the same batch size");
         auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(xold.device());
         auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(xold.device());
         auto sum = p.square().sum(1).sqrt(); // Sum across the batch dimension while retaining the batch dimension
@@ -51,24 +55,24 @@ namespace janus
             auto pm1 = p.index({m1}).contiguous();
             p.index_put_({m1}, torch::einsum("mi,m->mi", {pm1, fac}));
         }
-        auto slope = torch::einsum("mi,mi->m", {g,  p});
+        auto slope = torch::einsum("mi,mi->mi", {g,  p});
         if ((slope >= 0).any().equal(true_t))
         {
             std::cerr << "Positive slope in lnsrch for samples" << (slope >= 0).nonzero() << std::endl;
         }
         auto xolda = xold.abs();
         auto ONES = torch::ones_like(xolda);
-        auto res = (p.abs() / bmax(xolda, ONES)).max(1);
+        auto res = (p.abs() / bmax(xolda, ONES)).max(1, true);
         auto test = std::get<0>(res);
-        auto alamin = TOLX / test;
+        auto alamin = (TOLX / test).repeat({1, N});
         auto cond = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
-        auto tmplam = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
+        auto tmplam = torch::zeros({M, N}, torch::dtype(torch::kFloat64)).to(xold.device());
         auto J2 = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
-        auto alam = torch::ones({M}, torch::dtype(torch::kFloat64)).to(xold.device());
+        auto alam = torch::ones({M, N}, torch::dtype(torch::kFloat64)).to(xold.device());
         auto alam2 = torch::zeros_like(alam);
-        auto a = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
-        auto b = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
-        auto disc = torch::zeros({M}, torch::dtype(torch::kFloat64)).to(xold.device());
+        auto a = torch::zeros({M, N}, torch::dtype(torch::kFloat64)).to(xold.device());
+        auto b = torch::zeros({M, N}, torch::dtype(torch::kFloat64)).to(xold.device());
+        auto disc = torch::zeros({M,N}, torch::dtype(torch::kFloat64)).to(xold.device());
         auto check = torch::zeros({M}, torch::dtype(torch::kBool)).to(xold.device());
 
         torch::Tensor Jres = torch::zeros_like(Jold);
@@ -78,15 +82,30 @@ namespace janus
         while (m2.eq(true_t).any().item<bool>())
         {
             auto xupdt = xold.index({m2}).contiguous() +
-                         torch::einsum("m,mi->mi", {alam.index({m2}).contiguous(), 
+                         torch::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                     p.index({m2}).contiguous()});
+            // Check if the new x is within bounds
+            auto m2_1_1 = (xupdt < xmin).all(1);
+            if (m2_1_1.eq(true_t).any().item<bool>())
+            {
+                xupdt.index_put_({m2_1_1}, xmin.index({m2_1_1}));
+                //also update the lambda factor
+                alam.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
+            }
+            auto m2_1_2 = (xupdt > xmax);
+            if (m2_1_2.eq(true_t).any().item<bool>())
+            {
+                xupdt.index_put_({m2_1_2}, xmax.index({m2_1_2}));
+                //also update the lambda factor
+                alam.index_put_({m2_1_2}, (xmax.index({m2_1_2}) - xold.index({m2_1_2})) / p.index({m2_1_2}));
+            }
             x.index_put_({m2}, xupdt);
             auto xm2 = x.index({m2}).contiguous();
             auto paramsm2 = params.index({m2}).contiguous();
             Jres.index_put_({m2}, Jfunc(func(xm2, paramsm2)));
             // This is possibly a multi-dimensional function so we convert to scalar
 
-            auto m2_1 = m2 & (alam < alamin);
+            auto m2_1 = m2 & (alam < alamin).all(1);
             if (m2_1.eq(true_t).any().item<bool>())
             {
                 x.index_put({m2_1}, xold.index({m2_1}));
@@ -98,12 +117,12 @@ namespace janus
             {
 
                 auto suff = (Jres.index({m2}).contiguous() <= (Jold.index({m2}).contiguous() +
-                                                               ALF * alam.index({m2}).contiguous() *
-                                                                   slope.index({m2}).contiguous()));
+                                                               torch::einsum("mi,mi->m",{ALF * alam.index({m2}).contiguous(),
+                                                                                         slope.index({m2}).contiguous()})));
                 m2.index_put_({m2.clone()}, ~suff); // Sufficiency condition
             }
             // Check m2 after the sufficiency condition
-            auto m2_3 = m2 & alam == 1.0;
+            auto m2_3 = m2 & (alam == 1.0).all(1);
             if (m2_3.any().eq(true_t).any().item<bool>())
             {
                 auto den = (2.0 * (Jres.index({m2_3}).contiguous() -
@@ -111,7 +130,7 @@ namespace janus
                                    slope.index({m2_3}).contiguous()));
                 tmplam.index_put_({m2_3}, -slope.index({m2_3}).contiguous() / den);
             }
-            auto m2_4 = m2 & (alam != 1.0);
+            auto m2_4 = m2 & (alam != 1.0).all(1);
             if (m2_4.any().eq(true_t).any().item<bool>())
             {
                 auto rhs1 = Jres.index({m2_4}).contiguous() -
@@ -132,13 +151,13 @@ namespace janus
                                         (alam2.index({m2_4}).contiguous().square())) /
                                         (alam.index({m2_4}).contiguous() - alam2.index({m2_4}).contiguous()));
 
-                auto m2_4_1 = m2_4 & (a == 0);
+                auto m2_4_1 = m2_4 & (a == 0).all(1);
                 if (m2_4_1.eq(true_t).any().item<bool>())
                 {
                     tmplam.index_put_({m2_4_1}, -slope.index({m2_4_1}).contiguous() / 
                                                 (2.0 * b.index({m2_4_1}).contiguous()));
                 }
-                auto m2_4_2 = m2_4 & (a != 0.0);
+                auto m2_4_2 = m2_4 & (a != 0.0).all(1);
                 if (m2_4_2.eq(true_t).any().item<bool>())
                 {
                         // disc=b*b-3.0*a*slope;
@@ -158,7 +177,7 @@ namespace janus
                                                      disc.index({m2_4_2_2}).contiguous().sqrt()) /
                                                      (3.0 * a.index({m2_4_2_2}).contiguous()));
                     }
-                    auto m2_4_2_3 = m2_4_2 & (b > 0.0) & (disc >= 0);
+                    auto m2_4_2_3 = m2_4_2 & (b > 0.0).all(1) & (disc >= 0).all(1);
                     if (m2_4_2_3.eq(true_t).any().item<bool>())
                     {
                         // tmplam=-slope/(b+sqrt(disc));
@@ -166,7 +185,7 @@ namespace janus
                                                      (b.index({m2_4_2_3}).contiguous() +
                                                       disc.index({m2_4_2_3}).contiguous().sqrt()));
                     }
-                    auto m2_4_2_4 = m2_4_2 & (tmplam > 0.5 * alam);
+                    auto m2_4_2_4 = m2_4_2 & (tmplam > 0.5 * alam).all(1);
                     if (m2_4_2_4.eq(true_t).any().item<bool>())
                     {
                       tmplam.index_put_({m2_4_2_4}, 0.5 * alam.index({m2_4_2_4}).contiguous());

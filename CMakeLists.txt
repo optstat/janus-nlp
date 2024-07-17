@@ -5,10 +5,17 @@ project(JanusNLPProject)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "Suppress developer warnings")
+
+# Find Python3 and NumPy
+find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+
+
 # Set debug flags
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 # Add DEBUG definition
 #add_definitions(-DDEBUG)
+
+
 
 enable_testing()
 # Find libtorch
@@ -30,6 +37,7 @@ add_custom_target(copy_headers ALL
 
 # Add subdirectory for tests
 add_subdirectory(tests/cpp)
+add_subdirectory(examples/cpp)
 
 # Install rules for header files
 install(DIRECTORY ${HEADER_SOURCE_DIR}/ DESTINATION include/janus FILES_MATCHING PATTERN "*.hpp")

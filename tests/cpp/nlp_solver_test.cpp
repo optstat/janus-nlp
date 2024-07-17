@@ -79,6 +79,8 @@ TEST(LineSearchTest, Cubic) {
         x0.index_put_({i, 0}, 0.0+0.01*i);
         x0.index_put_({i, 1}, 0.0+0.01*i);
     }
+    torch::Tensor xmin = torch::ones({M, 2}, torch::kDouble)*-1000;
+    torch::Tensor xmax = torch::ones({M, 2}, torch::kDouble)*1000;
 
     torch::Tensor stpmax = torch::ones({M}, torch::kDouble);
     torch::Tensor check = torch::zeros({M}, torch::kBool);
@@ -91,7 +93,7 @@ TEST(LineSearchTest, Cubic) {
     // Search direction (negative gradient)
     torch::Tensor p = -g;
     // Perform line search
-    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, cubic);
+    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, xmin, xmax, cubic);
 
     // Print the results
     //std::cerr << (J_new < J0) << std::endl;
@@ -111,6 +113,9 @@ TEST(LineSearchTest, 2DFunction) {
         x0.index_put_({i-1, 0}, 2.0);
         x0.index_put_({i-1, 1}, 2.0);
     }
+    torch::Tensor xmin = torch::ones({M, 2}, torch::kDouble)*-1000;
+    torch::Tensor xmax = torch::ones({M, 2}, torch::kDouble)*1000;
+
 
     torch::Tensor stpmax = torch::ones({M}, torch::kDouble);
     torch::Tensor check = torch::zeros({M}, torch::kBool);
@@ -125,7 +130,7 @@ TEST(LineSearchTest, 2DFunction) {
     auto p = janus::solveluv(LU, P, -f0);
 
     // Perform line search
-    auto [x_new, J_new, g_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, func2d);
+    auto [x_new, J_new, g_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params,xmin, xmax, func2d);
 
     // Print the results
     /*std::cout << "Initial position: " << x0 << std::endl;
@@ -175,8 +180,11 @@ TEST(NewtGlobalTest, 2DFunction) {
     x0.index_put_({i, 0}, 2.0+0.1*i);
     x0.index_put_({i, 1}, 1.0+0.1*i);
   }
+  torch::Tensor xmin = torch::ones({M, 2}, torch::kDouble)*-1000;
+  torch::Tensor xmax = torch::ones({M, 2}, torch::kDouble)*1000;
+
   torch::Tensor params = torch::zeros({M, 2}, torch::dtype(torch::kFloat64));
-  auto res = newtTe(x0, params, func, jac);
+  auto res = newtTe(x0, params, xmin, xmax, func, jac);
   auto roots = std::get<0>(res);
   auto check = std::get<1>(res);
   auto errors = Jfunc(func(roots, params));

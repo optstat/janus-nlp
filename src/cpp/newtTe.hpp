@@ -12,6 +12,8 @@ namespace janus
 
     std::tuple<torch::Tensor, torch::Tensor> newtTe(torch::Tensor &x,
                                                   const torch::Tensor &params,
+                                                  const torch::Tensor &xmin,
+                                                  const torch::Tensor &xmax,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &func,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &jacfunc)
     {
@@ -49,6 +51,7 @@ namespace janus
         while ( m2.eq(true_t).any().item<bool>() && count < MAXITS)
         {
             count++;
+            std::cerr << "Iteration count = " << count << std::endl;
             //Recalculate the function and the jacobian
             f.index_put_({m2}, func(x.index({m2}).contiguous(),
                                     params.index({m2}).contiguous()));
@@ -91,9 +94,11 @@ namespace janus
                                                    pin,
                                                    stpmaxin,
                                                    paramsin,
+                                                   xmin.index({m2}),
+                                                   xmax.index({m2}),
                                                    func);
-            //std::cerr << "Output from lnsrch " << xs << std::endl;
-            //std::cerr << "Error at count=" <<count << " "<< js << std::endl;
+            std::cerr << "Output from lnsrch " << xs << std::endl;
+            std::cerr << "Error at count=" << count << " "<< js << std::endl;
             x.index_put_({m2}, xs);
             p.index_put_({m2}, ps);
             J.index_put_({m2}, js);
