@@ -20,13 +20,16 @@ namespace plt = matplotlibcpp;
  * the Jacobian
 */
 using Slice = torch::indexing::Slice;
-double W = 0.1;
+double W = 1.0;
 double x1f = 1.0;
-double x2f = -1.75;
+double x2f = -1.25;
 double x10 = 2.0;
 double x20 = 0.0;
 double ft = 1.0;
 double mu=1.0;
+//Guesses for the initial values of the Lagrange multipliers
+double p10 = -10.0;
+double p20 = 10.0;
 
  
 
@@ -81,7 +84,7 @@ torch::Tensor hamiltonian(const torch::Tensor& x,
   torch::Tensor p2 = p.index({Slice(), 1});  
   torch::Tensor x1 = x.index({Slice(), 0});  
   torch::Tensor x2 = x.index({Slice(), 1});  
-  auto H = p1*x2+p2*mu*(1-x1*x1)*x2-p2*mu*x1-p2*p2/W+p2*p2/(2*W)+1; //Return the through copy elision
+  auto H = p1*x2+p2*u*(1-x1*x1)*x2-p2*mu*x1-p2*p2/W+p2*p2/(2*W)+1; //Return the through copy elision
   return H; //Return the through copy elision
 }
 
@@ -212,23 +215,28 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //*options.EventsFcn = vdpEvents;
-  options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
-  options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
+  options.RelTol = torch::tensor({1e-9}, torch::kFloat64).to(device);
+  options.AbsTol = torch::tensor({1e-12}, torch::kFloat64).to(device);
+  options.MaxNbrStep = 1000;
 
 
   auto params_dual = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
   //Create an instance of the Radau5 class
   //Call the solve method of the Radau5 class
   janus::RadauTeD r(vdpdyns, jac, tspan, y, options, params_dual);   // Pass the correct arguments to the constructor`
-  r.solve();
+  int rescode = r.solve();
   //std::cerr << "r.Last=";
   //std::cerr << r.Last << "\n";
   //std::cerr << "r.h=";
   //janus::print_dual(r.h);
-  int nrows = r.yout.r.size(1);
+  
   auto pf = r.y.index({Slice(), Slice(0,2)});
   auto xf = r.y.index({Slice(), Slice(2,4)});
-  
+  if (rescode != 0) {
+    std::cerr << "propagation failed\n";
+    //Return a large result to make sure the solver does not fail
+    return torch::ones({M, 3}, torch::kFloat64)*1.0e6;
+  }
   auto x1delta = r.y.index({Slice(), Slice(2,3)})-x1f;
   auto x2delta = r.y.index({Slice(), Slice(3,4)})-x2f;
   auto Hf = hamiltonian_dual(xf, pf, W);
@@ -277,18 +285,26 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //*options.EventsFcn = vdpEvents;
-  options.RelTol = torch::tensor({1e-3}, x.options());
-  options.AbsTol = torch::tensor({1e-6}, x.options());
+  options.RelTol = torch::tensor({1e-9}, x.options());
+  options.AbsTol = torch::tensor({1e-12}, x.options());
   //Create an instance of the Radau5 class
   auto params_dual = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
-
+  options.MaxNbrStep = 1000;
   janus::RadauTeD r(vdpdyns, jac, tspan, y, options, params_dual);   // Pass the correct arguments to the constructor
   //Call the solve method of the Radau5 class
-  r.solve();
+  int rescode = r.solve();
   //std::cerr << "r.Last=";
   //std::cerr << r.Last << "\n";
   //std::cerr << "r.h=";
   //janus::print_dual(r.h);
+  torch::Tensor jacVal = torch::zeros({M, 3, 3}, torch::kFloat64);
+
+  if (rescode != 0) {
+    std::cerr << "propagation failed\n";
+    //Return default zeros.  These values will not be used
+    return jacVal;
+  }
+
 
   auto pf = r.y.index({Slice(), Slice(0,2)});
   auto xf = r.y.index({Slice(), Slice(2,4)});
@@ -301,7 +317,6 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   std::cerr << "x2delta=";
   janus::print_dual(x2delta);
   auto Hf = hamiltonian_dual(xf, pf, W);
-  torch::Tensor jacVal = torch::zeros({M, 3, 3}, torch::kFloat64);
   jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(), 0,0}));
   jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(), 0,1}));
   jacVal.index_put_({Slice(), 0, 2}, x1delta.d.index({Slice(), 0,N-1}));
@@ -330,12 +345,14 @@ int main(int argc, char *argv[])
 
   int M =1;
   int N =3;
+  /*
+  -28.8603   1.4887   6.1901*/
 
   torch::Tensor x0 = torch::ones({1, N}, torch::dtype(torch::kFloat64));
   for ( int i=0; i < M; i++) {
-    x0.index_put_({i, 0}, -5.0+0.1*i);  //p1
-    x0.index_put_({i, 1}, 6.0+0.1*i);  //p2
-    x0.index_put_({i, 2}, ft);        //x1
+    x0.index_put_({i, 0}, p10+0.1*i);  //p1
+    x0.index_put_({i, 1}, p20+0.1*i);  //p2
+    x0.index_put_({i, 2}, ft);        //ft
   }
   torch::Tensor params = torch::zeros_like(x0);
   //Impose limits on the state space

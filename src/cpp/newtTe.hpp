@@ -85,8 +85,8 @@ namespace janus
             auto pin = p.index({m2}).contiguous();
             auto stpmaxin = stpmax.index({m2}).contiguous();
             auto paramsin = params.index({m2}).contiguous();
-            //std::cerr << "At count = " << count << std::endl;
-            //std::cerr << "Input into lnsrch " << xoldin << std::endl;
+            std::cerr << "At count = " << count << std::endl;
+            std::cerr << "Input into lnsrch " << xoldin << std::endl;
             auto [xs, js, ps, checkupd] = lnsrchTe(xoldin,
                                                    foldin,
                                                    joldin,
@@ -99,6 +99,7 @@ namespace janus
                                                    func);
             std::cerr << "Output from lnsrch " << xs << std::endl;
             std::cerr << "Error at count=" << count << " "<< js << std::endl;
+            std::cerr << "checkupd at count=" << count << " "<< checkupd << std::endl;
             x.index_put_({m2}, xs);
             p.index_put_({m2}, ps);
             J.index_put_({m2}, js);
@@ -138,6 +139,10 @@ namespace janus
                 auto dx = (x.index({m2}) - xold.index({m2})).abs();
                 auto xabs = x.index({m2}).abs();
                 test.index_put_({m2}, std::get<0>((dx/xabs).max(1)));
+                if ( (test.index({m2}) < TOLX).any().item<bool>() )
+                {
+                    std::cerr << "Small relative changes in x detected" << std::endl;
+                }
 
                 m2.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
             }

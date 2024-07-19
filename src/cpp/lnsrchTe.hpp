@@ -85,14 +85,14 @@ namespace janus
                          torch::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                     p.index({m2}).contiguous()});
             // Check if the new x is within bounds
-            auto m2_1_1 = (xupdt < xmin).all(1);
+            auto m2_1_1 = (xupdt < xmin.index({m2})).all(1);    
             if (m2_1_1.eq(true_t).any().item<bool>())
             {
                 xupdt.index_put_({m2_1_1}, xmin.index({m2_1_1}));
                 //also update the lambda factor
                 alam.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
             }
-            auto m2_1_2 = (xupdt > xmax);
+            auto m2_1_2 = (xupdt > xmax.index({m2}));
             if (m2_1_2.eq(true_t).any().item<bool>())
             {
                 xupdt.index_put_({m2_1_2}, xmax.index({m2_1_2}));
@@ -125,22 +125,29 @@ namespace janus
             auto m2_3 = m2 & (alam == 1.0).all(1);
             if (m2_3.any().eq(true_t).any().item<bool>())
             {
-                auto den = (2.0 * (Jres.index({m2_3}).contiguous() -
-                                   Jold.index({m2_3}).contiguous() -
+                auto den = (2.0 * (Jres.index({m2_3}).contiguous().unsqueeze(1) -
+                                   Jold.index({m2_3}).contiguous().unsqueeze(1) -
                                    slope.index({m2_3}).contiguous()));
                 tmplam.index_put_({m2_3}, -slope.index({m2_3}).contiguous() / den);
             }
             auto m2_4 = m2 & (alam != 1.0).all(1);
             if (m2_4.any().eq(true_t).any().item<bool>())
             {
+                std::cerr << "m2_4 " << m2_4 << std::endl;
+                std::cerr << "Jres=";
+                janus::print_tensor(Jres);
+                std::cerr << "Jold=";
+                janus::print_tensor(Jold);
                 auto rhs1 = Jres.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
-                            alam.index({m2_4}).contiguous()* 
-                            slope.index({m2_4}).contiguous();
+                            torch::einsum("mi, mi->m", {alam.index({m2_4}).contiguous(), 
+                            slope.index({m2_4}).contiguous()});
                 auto rhs2 = J2.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
-                            alam2.index({m2_4}).contiguous()* 
-                            slope.index({m2_4}).contiguous();
+                            torch::einsum("mi, mi->m", {alam2.index({m2_4}).contiguous(), 
+                            slope.index({m2_4}).contiguous()});
+                rhs1.unsqueeze_(1);
+                rhs2.unsqueeze_(1);
                 a.index_put_({m2_4}, (rhs1 / alam.index({m2_4}).contiguous().square() -
                                       rhs2 / alam2.index({m2_4}).contiguous().square()) /
                                       (alam.index({m2_4}).contiguous()) -
@@ -150,6 +157,7 @@ namespace janus
                                         alam.index({m2_4}).contiguous() * rhs2 / 
                                         (alam2.index({m2_4}).contiguous().square())) /
                                         (alam.index({m2_4}).contiguous() - alam2.index({m2_4}).contiguous()));
+
 
                 auto m2_4_1 = m2_4 & (a == 0).all(1);
                 if (m2_4_1.eq(true_t).any().item<bool>())
@@ -164,12 +172,17 @@ namespace janus
                     disc.index_put({m2_4_2}, b.index({m2_4_2}).contiguous().square() -
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
-                    auto m2_4_2_1 = m2_4_2 & (disc < 0);
+                    std::cerr << "m2_4_2 " << m2_4_2 << std::endl;
+                    std::cerr << "disc " << disc << std::endl;
+                    std::cerr << "disc.index({m2_4_2}) < 0=" << (disc < 0).all(1) << std::endl;
+                    auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {
                       tmplam.index_put_({m2_4_2_1}, 0.5 * alam.index({m2_4_2_1}).contiguous());
                     }
-                    auto m2_4_2_2 = m2_4_2 & (disc >= 0.0) & (b <= 0);
+                    auto m2_4_2_2 = m2_4_2 & 
+                                   (disc >= 0.0).all(1) & 
+                                   (b <= 0).all(1);
                     if (m2_4_2_2.eq(true_t).any().item<bool>())
                     {
                       // tmplam=(-b+sqrt(disc))/(3.0*a);
@@ -177,7 +190,9 @@ namespace janus
                                                      disc.index({m2_4_2_2}).contiguous().sqrt()) /
                                                      (3.0 * a.index({m2_4_2_2}).contiguous()));
                     }
-                    auto m2_4_2_3 = m2_4_2 & (b > 0.0).all(1) & (disc >= 0).all(1);
+                    auto m2_4_2_3 = m2_4_2 & 
+                                    (b > 0.0).all(1) & 
+                                    (disc >= 0).all(1);
                     if (m2_4_2_3.eq(true_t).any().item<bool>())
                     {
                         // tmplam=-slope/(b+sqrt(disc));
@@ -185,7 +200,8 @@ namespace janus
                                                      (b.index({m2_4_2_3}).contiguous() +
                                                       disc.index({m2_4_2_3}).contiguous().sqrt()));
                     }
-                    auto m2_4_2_4 = m2_4_2 & (tmplam > 0.5 * alam).all(1);
+                    auto m2_4_2_4 = m2_4_2 & 
+                                    (tmplam > 0.5 * alam).all(1);
                     if (m2_4_2_4.eq(true_t).any().item<bool>())
                     {
                       tmplam.index_put_({m2_4_2_4}, 0.5 * alam.index({m2_4_2_4}).contiguous());
