@@ -3,7 +3,7 @@
 #include <random>
 #include "../../src/cpp/lnsrchTe.hpp"
 #include "../../src/cpp/newtTe.hpp"
-
+#include "../../src/cpp/lnsrchTeD.hpp"
 
 /**
  * Function to reduce the vector function to a scalar function

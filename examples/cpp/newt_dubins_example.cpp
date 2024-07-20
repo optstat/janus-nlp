@@ -13,7 +13,7 @@
 using namespace janus;
 namespace plt = matplotlibcpp;
 
-
+int M = 2;
 /**
  * Radau example using the Van der Pol oscillator 
  * Using the Hamiltonian with dual number approach to calcuate the dynamics and
@@ -24,9 +24,9 @@ double pi = M_PI;
 double W  = 0.01; //Regularization weight
 double x1f = 0.0; //Final value of x1
 double x2f = 0.0; //Final value of x2
-double x10 = 0.5; //Initial value of x1
+auto x10 = torch::linspace(0.4, 0.6, M, torch::kFloat64); //Initial value of x1
 double x20 = 0.0; //Initial value of x2
-double x30 = 7*pi/8;  //Initial value of x3
+double x30 = pi;  //Initial value of x3
 //Guesses for the initial values of the Lagrange multipliers
 //1.1200 -0.0702 -0.0351  0.5252
 double p10 = 1.1200;
@@ -158,7 +158,6 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
 
   //set the device
   //torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
-  int M = x.size(0); //Number of samples
   int D = 6; //Number of variables
   int N = 7; //Length of the dual vector in order [p1, p2, p3, x1, x2, x3, tf]
   auto device = x.device();
@@ -236,7 +235,6 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
 torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   //set the device
   //torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
-  int M = x.size(0); //Number of samples
   int D = 6; //Number of variables
   int N = 7; //Length of the dual vector in order [p1, p2, p3, x1, x2, x3, tf]
   auto device = x.device();
@@ -249,7 +247,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   y.r.index_put_({Slice(), Slice(0,1)}, p10);
   y.r.index_put_({Slice(), Slice(1,2)}, p20);
   y.r.index_put_({Slice(), Slice(2,3)}, p30);
-  y.r.index_put_({Slice(), Slice(3,4)}, x10);
+  y.r.index_put_({Slice(), Slice(3,4)}, x10.unsqueeze(1));
   y.r.index_put_({Slice(), Slice(4,5)}, x20);
   y.r.index_put_({Slice(), Slice(5,6)}, x30);
   y.d.index_put_({Slice(), 0, 0}, 1.0);
@@ -349,7 +347,6 @@ int main(int argc, char *argv[])
   void (*pd)(const TensorDual&) = janus::print_dual;
   void (*pmd)(const TensorMatDual&) = janus::print_dual;
 
-  int M =10;
   int D =6;
   /*
   -28.8603   1.4887   6.1901*/
@@ -357,10 +354,10 @@ int main(int argc, char *argv[])
   torch::Tensor x0 = torch::ones({M, 4}, torch::dtype(torch::kFloat64));
   for ( int i=0; i < M; i++) {
     //Adjust the guesses accordingly
-    x0.index_put_({i, 0}, p10+0.01*i);  //p1
-    x0.index_put_({i, 1}, p20+0.01*i);  //p2
-    x0.index_put_({i, 2}, p30+0.01*i);  //p3
-    x0.index_put_({i, 3}, ft0+0.01*i);  //ft
+    x0.index_put_({i, 0}, p10);  //p1
+    x0.index_put_({i, 1}, p20);  //p2
+    x0.index_put_({i, 2}, p30);  //p3
+    x0.index_put_({i, 3}, ft0);  //ft
   }
   torch::Tensor params = torch::zeros_like(x0);
   //Impose limits on the state space
