@@ -22,8 +22,8 @@ set_property(TARGET nlp_solver_test PROPERTY CXX_STANDARD 17)
 add_test(NAME NLPTest COMMAND ${CMAKE_BINARY_DIR}/bin/nlp_solver_test)
 
 # Ensure the test executable is built when running 'make run_tests'
-add_custom_target(run_tests
-    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target lineartest
+add_custom_target(all_tests
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target nlp_solver_test
     COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
 )
 

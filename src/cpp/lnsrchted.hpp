@@ -20,7 +20,7 @@ namespace janus
     /**
      * Perform line search in parallel for a batch of points
      */
-    std::tuple<TensorDual, TensorDual, TensorDual, torch::Tensor> lnsrchTe(TensorDual &xold,
+    std::tuple<TensorDual, TensorDual, TensorDual, torch::Tensor> lnsrchTeD(TensorDual &xold,
                                                                         TensorDual &fold,
                                                                         TensorDual &Jold,
                                                                         TensorDual &g,

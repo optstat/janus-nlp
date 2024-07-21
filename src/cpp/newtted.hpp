@@ -3,19 +3,19 @@
 #include <torch/torch.h>
 #include <iostream>
 #include <chrono>
-#include <janus/luted.hpp>
-#include <janus/qrte.hpp>
-#include "lnsrchte.hpp"
+//#include <janus/luted.hpp>
+#include <janus/qrted.hpp>
+#include "lnsrchted.hpp"
 #include <janus/janus_util.hpp>
 namespace janus
 {
 
-    std::tuple<torch::TensorDual, torch::TensorDual> newtTeD(TensorDual &x,
-                                                     const TensorDual &params,
-                                                     const TensorDual &xmin,
-                                                     const TensorDual &xmax,
-                                                     const std::function<TensorDual(const TensorDual &, const TensorDual &)> &func,
-                                                     const std::function<TensorDual(const TensorDual &, const TensorDual &)> &jacfunc)
+    std::tuple<TensorDual, torch::Tensor> newtTeD(TensorDual &x,
+                                               const TensorDual &params,
+                                               const TensorDual &xmin,
+                                               const TensorDual &xmax,
+                                               const std::function<TensorDual(const TensorDual &, const TensorDual &)> &func,
+                                               const std::function<TensorMatDual(const TensorDual &, const TensorDual &)> &jacfunc)
     {
         int MAXITS = 500;
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J
@@ -66,10 +66,10 @@ namespace janus
             // Since the jacobian has been recalcualted, we need to recompute the QR decomposition
             //auto [qt, r] = qrte(jac.index({check}).contiguous()); // This needs to be replaced with GMRES for vey high dimensional systems
             auto jacm2 = jac.index({m2}).contiguous();
-            //auto [qt, r] = qrte(jacm2);
-            auto [LU, P] = LUTe(jacm2);
+            auto [qt, r] = qrted(jacm2);
+            //auto [LU, P] = LUTeD(jacm2);
             auto pm2 = -f.index({m2}).contiguous();
-            auto sollu = solveluv(LU, P, pm2);
+            auto sollu = qrtedsolvev(qt, r, pm2);
             //auto sol = qrtesolvev(qt, r, pm2);
             //Test the solution
             //auto Jacsollu = torch::einsum("mij, mj->mi", {jacm2, sollu});
@@ -87,15 +87,17 @@ namespace janus
             auto paramsin = params.index({m2}).contiguous();
             std::cerr << "At count = " << count << std::endl;
             std::cerr << "Input into lnsrch " << xoldin << std::endl;
-            auto [xs, js, ps, checkupd] = lnsrchTe(xoldin,
+            auto xminm2 = xmin.index({m2}).contiguous();
+            auto xmaxm2 = xmax.index({m2}).contiguous();
+            auto [xs, js, ps, checkupd] = lnsrchTeD(xoldin,
                                                    foldin,
                                                    joldin,
                                                    gin,
                                                    pin,
                                                    stpmaxin,
                                                    paramsin,
-                                                   xmin.index({m2}),
-                                                   xmax.index({m2}),
+                                                   xminm2,
+                                                   xmaxm2,
                                                    func);
             std::cerr << "Output from lnsrch " << xs << std::endl;
             std::cerr << "Error at count=" << count << " "<< js << std::endl;
@@ -105,7 +107,7 @@ namespace janus
             J.index_put_({m2}, js);
             check.index_put_({m2}, checkupd);
 
-            test.index_put_({m2}, std::get<0>(f.index({m2}).abs().max(1, false)));
+            test.index_put_({m2}, f.index({m2}).abs().max());
             auto m2_1 = m2 & (test < TOLF);
             if (m2_1.any().eq(true_t).item<bool>())
             {
@@ -121,13 +123,13 @@ namespace janus
                 //Checks for convergence on the gradient
                 test.index_put_({m2_2}, 0.0);
                 auto Jl = J.index({m2_2}).contiguous();
-                auto den = torch::max(Jl, 0.5 * torch::ones_like(Jl) * N);
+                auto den = max(Jl, 0.5 * TensorDual::ones_like(Jl) * N);
                 auto xt = x.index({m2_2}).abs();
-                auto ONE = torch::ones_like(xt);
-                auto rhs = torch::einsum("mi,m->mi", {bmax(xt, ONE),  den.reciprocal()});
-                auto temp = torch::einsum("mi,mi->m",{g.index({m2_2}).abs() ,
+                auto ONE = TensorDual::ones_like(xt);
+                auto rhs = TensorDual::einsum("mi,m->mi", {max(xt, ONE),  den.reciprocal()});
+                auto temp = TensorDual::einsum("mi,mi->m",{g.index({m2_2}).abs() ,
                                                       rhs});
-                test.index_put_({m2_2}, std::get<0>(temp.max(1, false)));
+                test.index_put_({m2_2}, temp.max());
                 check.index_put_({m2_2}, test.index({m2_2}) < TOLMIN);
                 m2.index_put_( {m2_2}, false); //We are done with this samples 
 
@@ -138,7 +140,7 @@ namespace janus
                 // Check for small relative changes in x
                 auto dx = (x.index({m2}) - xold.index({m2})).abs();
                 auto xabs = x.index({m2}).abs();
-                test.index_put_({m2}, std::get<0>((dx/xabs).max(1)));
+                test.index_put_({m2}, (dx/xabs).max());
                 if ( (test.index({m2}) < TOLX).any().item<bool>() )
                 {
                     std::cerr << "Small relative changes in x detected" << std::endl;

@@ -13,7 +13,7 @@
 using namespace janus;
 namespace plt = matplotlibcpp;
 
-int M = 1000;
+int M = 100;
 /**
  * Radau example using the Van der Pol oscillator 
  * Using the Hamiltonian with dual number approach to calcuate the dynamics and
@@ -29,10 +29,10 @@ double x20 = 0.0; //Initial value of x2
 double x30 = pi;  //Initial value of x3
 //Guesses for the initial values of the Lagrange multipliers
 //1.1200 -0.0702 -0.0351  0.5252
-double p10 = 1.1200;
-double p20 = -0.0702;
-double p30 = -0.0351;
-double ft0 = 0.5252;
+double p10 = 0.0;
+double p20 = 0.0;
+double p30 = 0.0;
+double ft0 = 0.1;
 
  
 

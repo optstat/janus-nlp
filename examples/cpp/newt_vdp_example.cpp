@@ -6,8 +6,8 @@
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 #include <janus/janus_ode_common.hpp>
-#include "../../src/cpp/lnsrchte.hpp"
-#include "../../src/cpp/newtte.hpp"
+#include "../../src/cpp/lnsrchted.hpp"
+#include "../../src/cpp/newtted.hpp"
 #include "matplotlibcpp.h"
 
 using namespace janus;
@@ -34,10 +34,10 @@ double p20 = 10.0;
  
 
 TensorDual control_dual(const TensorDual& x1, 
-          const TensorDual& x2,
-          const TensorDual& p1,
-          const TensorDual& p2, 
-          double W=1.0) {
+                        const TensorDual& x2,
+                        const TensorDual& p1,
+                        const TensorDual& p2, 
+                        double W=1.0) {
   auto u = -p2*((1-x1*x1)*x2-x1)/W;
   auto m = u < 0.01;
 

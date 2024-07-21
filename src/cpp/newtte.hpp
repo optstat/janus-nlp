@@ -87,6 +87,8 @@ namespace janus
             auto paramsin = params.index({m2}).contiguous();
             std::cerr << "At count = " << count << std::endl;
             std::cerr << "Input into lnsrch " << xoldin << std::endl;
+            auto xminm2 = xmin.index({m2}).contiguous();
+            auto xmaxm2 = xmax.index({m2}).contiguous();
             auto [xs, js, ps, checkupd] = lnsrchTe(xoldin,
                                                    foldin,
                                                    joldin,
@@ -94,8 +96,8 @@ namespace janus
                                                    pin,
                                                    stpmaxin,
                                                    paramsin,
-                                                   xmin.index({m2}),
-                                                   xmax.index({m2}),
+                                                   xminm2,
+                                                   xmaxm2,
                                                    func);
             std::cerr << "Output from lnsrch " << xs << std::endl;
             std::cerr << "Error at count=" << count << " "<< js << std::endl;
