@@ -92,7 +92,7 @@ namespace janus
                 //also update the lambda factor
                 alam.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
             }
-            auto m2_1_2 = (xupdt > xmax.index({m2}));
+            auto m2_1_2 = (xupdt > xmax.index({m2})).all(1);
             if (m2_1_2.eq(true_t).any().item<bool>())
             {
                 xupdt.index_put_({m2_1_2}, xmax.index({m2_1_2}));
