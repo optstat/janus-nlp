@@ -102,6 +102,8 @@ namespace janus
             x.index_put_({m2}, xupdt);
             auto xm2 = x.index({m2}).contiguous();
             auto paramsm2 = params.index({m2}).contiguous();
+
+            std::cerr << "Jfunc(func(xm2, paramsm2))=" << Jfunc(func(xm2, paramsm2)) << std::endl;
             Jres.index_put_({m2}, Jfunc(func(xm2, paramsm2)));
             // This is possibly a multi-dimensional function so we convert to scalar
 

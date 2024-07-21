@@ -5,7 +5,7 @@
 #include <chrono>
 #include <janus/lute.hpp>
 #include <janus/qrte.hpp>
-#include "lnsrchTe.hpp"
+#include "lnsrchte.hpp"
 #include <janus/janus_util.hpp>
 namespace janus
 {

@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 #include <random>
-#include "../../src/cpp/lnsrchTe.hpp"
-#include "../../src/cpp/newtTe.hpp"
-#include "../../src/cpp/lnsrchTeD.hpp"
+#include "../../src/cpp/lnsrchte.hpp"
+#include "../../src/cpp/newtte.hpp"
+#include "../../src/cpp/lnsrchted.hpp"
+#include "../../src/cpp/newtted.hpp"
 
 /**
  * Function to reduce the vector function to a scalar function

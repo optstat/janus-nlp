@@ -6,8 +6,8 @@
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 #include <janus/janus_ode_common.hpp>
-#include "../../src/cpp/lnsrchTe.hpp"
-#include "../../src/cpp/newtTe.hpp"
+#include "../../src/cpp/lnsrchte.hpp"
+#include "../../src/cpp/newtte.hpp"
 #include "matplotlibcpp.h"
 
 using namespace janus;

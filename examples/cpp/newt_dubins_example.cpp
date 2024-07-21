@@ -6,14 +6,14 @@
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 #include <janus/janus_ode_common.hpp>
-#include "../../src/cpp/lnsrchTe.hpp"
-#include "../../src/cpp/newtTe.hpp"
+#include "../../src/cpp/lnsrchte.hpp"
+#include "../../src/cpp/newtte.hpp"
 #include "matplotlibcpp.h"
 
 using namespace janus;
 namespace plt = matplotlibcpp;
 
-int M = 2;
+int M = 1000;
 /**
  * Radau example using the Van der Pol oscillator 
  * Using the Hamiltonian with dual number approach to calcuate the dynamics and
@@ -164,13 +164,14 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   auto p10 = x.index({Slice(), 0});
   auto p20 = x.index({Slice(), 1});
   auto p30 = x.index({Slice(), 2});
+  int M = x.size(0);
 
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   TensorDual y = TensorDual(torch::zeros({M, D}, torch::kF64).to(device), torch::zeros({M,D,N}, torch::kF64).to(device));
   y.r.index_put_({Slice(), 0}, p10);
   y.r.index_put_({Slice(), 1}, p20);
   y.r.index_put_({Slice(), 2}, p30);
-  y.r.index_put_({Slice(), 3}, x10);
+  y.r.index_put_({Slice(), 3}, x10.index({Slice(0,M)}));
   y.r.index_put_({Slice(), 4}, x20);
   y.r.index_put_({Slice(), 5}, x30);
   y.d.index_put_({Slice(), 0, 0}, 1.0);
@@ -241,13 +242,14 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   auto p10 = x.index({Slice(), Slice(0,1)});
   auto p20 = x.index({Slice(), Slice(1,2)});
   auto p30 = x.index({Slice(), Slice(2,3)});
+  int M = x.size(0);
 
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   TensorDual y = TensorDual(torch::zeros({M, D}, torch::kF64).to(device), torch::zeros({M,D,N}, torch::kF64).to(device));
   y.r.index_put_({Slice(), Slice(0,1)}, p10);
   y.r.index_put_({Slice(), Slice(1,2)}, p20);
   y.r.index_put_({Slice(), Slice(2,3)}, p30);
-  y.r.index_put_({Slice(), Slice(3,4)}, x10.unsqueeze(1));
+  y.r.index_put_({Slice(), Slice(3,4)}, x10.index({Slice(0,M)}).unsqueeze(1));
   y.r.index_put_({Slice(), Slice(4,5)}, x20);
   y.r.index_put_({Slice(), Slice(5,6)}, x30);
   y.d.index_put_({Slice(), 0, 0}, 1.0);
