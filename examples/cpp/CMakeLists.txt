@@ -12,23 +12,32 @@ find_package(Torch REQUIRED)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
+
+# Define a custom build type for profiling
+set(CMAKE_BUILD_TYPE_PROFILE "Profile")
+set(CMAKE_CXX_FLAGS_PROFILE "-pg")
+set(CMAKE_EXE_LINKER_FLAGS_PROFILE "-pg")
+
+
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG")
 set(CMAKE_CXX_FLAGS_MINSIZEREL "-Os -DNDEBUG")
 
 
+
+
 # Enable AddressSanitizer
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g")
-set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer -g")
+set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}")
 
 # Optionally enable AddressSanitizer
-option(ENABLE_ASAN "Enable AddressSanitizer" ON)
+#option(ENABLE_ASAN "Enable AddressSanitizer" ON)
 
-if(ENABLE_ASAN)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g")
-    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
-endif()
+#if(ENABLE_ASAN)
+#    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fno-omit-frame-pointer -g")
+#    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -fsanitize=address")
+#endif()
 
 # Specify the executable
 set(SOURCE_FILE1 newt_vdp_example.cpp)

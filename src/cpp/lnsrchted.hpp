@@ -37,7 +37,7 @@ namespace janus
         TensorDual x = xold.clone();
         int M = xold.r.size(0); // Number of samples
         int N = xold.r.size(1); // Number of dimensions
-        int D = xold.r.size(2); // Number of dual numbers
+        int D = xold.d.size(2); // Number of dual numbers
         assert(xold.r.size(0) == fold.r.size(0) && xold.r.size(0) == g.r.size(0) 
                                             && xold.r.size(0) == p.r.size(0) 
                                             && "All inputs must have the same batch size");
@@ -49,7 +49,7 @@ namespace janus
         {
             auto fac = stpmax.index({m1}).contiguous() / sum.index({m1}).contiguous();
             auto pm1 = p.index({m1}).contiguous();
-            p.index_put_({m1}, TensorDual::einsum("mi,m->mi", pm1, fac));
+            p.index_put_({m1}, TensorDual::einsum("mi,mk->mi", pm1, fac));
         }
         auto slope = TensorDual::einsum("mi,mi->mi", {g,  p});
         if ((slope >= 0).any().equal(true_t))
@@ -118,8 +118,8 @@ namespace janus
             {
 
                 auto suff = (Jres.index({m2}).contiguous() <= (Jold.index({m2}).contiguous() +
-                                                               TensorDual::einsum("mi,mi->m",{ALF * alam.index({m2}).contiguous(),
-                                                                                         slope.index({m2}).contiguous()})));
+                                                               ALF * alam.index({m2}).contiguous()*
+                                                               slope.index({m2}).contiguous()).sum());
                 m2.index_put_({m2.clone()}, ~suff); // Sufficiency condition
             }
             // Check m2 after the sufficiency condition
@@ -141,12 +141,12 @@ namespace janus
                 janus::print_dual(Jold);
                 auto rhs1 = Jres.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
-                            TensorDual::einsum("mi, mi->m", {alam.index({m2_4}).contiguous(), 
-                            slope.index({m2_4}).contiguous()});
+                            (alam.index({m2_4}).contiguous()* 
+                            slope.index({m2_4}).contiguous()).sum();
                 auto rhs2 = J2.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
-                            TensorDual::einsum("mi, mi->m", {alam2.index({m2_4}).contiguous(), 
-                            slope.index({m2_4}).contiguous()});
+                            (alam2.index({m2_4}).contiguous()* 
+                            slope.index({m2_4}).contiguous()).sum();
                 a.index_put_({m2_4}, (rhs1 / alam.index({m2_4}).contiguous().square() -
                                       rhs2 / alam2.index({m2_4}).contiguous().square()) /
                                       (alam.index({m2_4}).contiguous()) -
@@ -171,9 +171,19 @@ namespace janus
                     disc.index_put_({m2_4_2}, b.index({m2_4_2}).contiguous().square() -
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
-                    std::cerr << "m2_4_2 " << m2_4_2 << std::endl;
-                    std::cerr << "disc " << disc << std::endl;
                     std::cerr << "disc.index({m2_4_2}) < 0=" << (disc < 0).all(1) << std::endl;
+                    //Cap the discriminator so it is never above a large number
+                    if ((disc > 1.0e+10).any().item<bool>())
+                    {
+                        disc.index_put_({disc > 1.0e+10}, 1.0e+10);
+                    }
+                    if ((disc < -1.0e+10).any().item<bool>())
+                    {
+                        disc.index_put_({disc < -1.0e+10}, -1.0e+10);
+                    }
+                    std::cerr << "disc " << disc << std::endl;
+
+
                     auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {

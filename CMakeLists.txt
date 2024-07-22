@@ -15,6 +15,11 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 # Add DEBUG definition
 #add_definitions(-DDEBUG)
 
+# Define a custom build type for profiling
+set(CMAKE_BUILD_TYPE_PROFILE "Profile")
+set(CMAKE_CXX_FLAGS_PROFILE "-pg")
+set(CMAKE_EXE_LINKER_FLAGS_PROFILE "-pg")
+
 
 
 enable_testing()

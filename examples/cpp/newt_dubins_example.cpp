@@ -13,7 +13,7 @@
 using namespace janus;
 namespace plt = matplotlibcpp;
 
-int M = 100;
+int M = 2;
 /**
  * Radau example using the Van der Pol oscillator 
  * Using the Hamiltonian with dual number approach to calcuate the dynamics and
@@ -24,7 +24,7 @@ double pi = M_PI;
 double W  = 0.01; //Regularization weight
 double x1f = 0.0; //Final value of x1
 double x2f = 0.0; //Final value of x2
-auto x10 = torch::linspace(0.4, 0.6, M, torch::kFloat64); //Initial value of x1
+auto x10 = torch::linspace(0.5, 0.6, M, torch::kFloat64); //Initial value of x1
 double x20 = 0.0; //Initial value of x2
 double x30 = pi;  //Initial value of x3
 //Guesses for the initial values of the Lagrange multipliers
@@ -192,8 +192,8 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //*options.EventsFcn = vdpEvents;
-  options.RelTol = torch::tensor({1e-12}, torch::kFloat64).to(device);
-  options.AbsTol = torch::tensor({1e-16}, torch::kFloat64).to(device);
+  options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
+  options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
   options.MaxNbrStep = 1000;
 
 
@@ -201,7 +201,9 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   //Create an instance of the Radau5 class
   //Call the solve method of the Radau5 class
   janus::RadauTeD r(dubinsdyns, dubinsjac, tspan, y, options, params_dual);   // Pass the correct arguments to the constructor`
+  std::cerr << "Caling ODE solver" << std::endl;
   int rescode = r.solve();
+  std::cerr << "ODE solver finished with count" <<  r.count << std::endl;
   //std::cerr << "r.Last=";
   //std::cerr << r.Last << "\n";
   //std::cerr << "r.h=";
@@ -271,8 +273,8 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //*options.EventsFcn = vdpEvents;
-  options.RelTol = torch::tensor({1e-12}, torch::kFloat64).to(device);
-  options.AbsTol = torch::tensor({1e-16}, torch::kFloat64).to(device);
+  options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
+  options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
   options.MaxNbrStep = 1000;
 
 

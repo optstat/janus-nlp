@@ -17,7 +17,7 @@ namespace janus
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &func,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &jacfunc)
     {
-        int MAXITS = 500;
+        int MAXITS = 100;
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J
         auto f = func(x, params);
         auto jac  = jacfunc(x, params);

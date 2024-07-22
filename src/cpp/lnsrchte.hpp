@@ -102,8 +102,7 @@ namespace janus
             x.index_put_({m2}, xupdt);
             auto xm2 = x.index({m2}).contiguous();
             auto paramsm2 = params.index({m2}).contiguous();
-
-            std::cerr << "Jfunc(func(xm2, paramsm2))=" << Jfunc(func(xm2, paramsm2)) << std::endl;
+            std::cerr << "Calling linesearch function" << std::endl;
             Jres.index_put_({m2}, Jfunc(func(xm2, paramsm2)));
             // This is possibly a multi-dimensional function so we convert to scalar
 
@@ -174,9 +173,18 @@ namespace janus
                     disc.index_put_({m2_4_2}, b.index({m2_4_2}).contiguous().square() -
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
-                    std::cerr << "m2_4_2 " << m2_4_2 << std::endl;
+                    //Cap the discriminator so it is never above a large number
+                    if ((disc > 1.0e+10).any().item<bool>())
+                    {
+                        disc.index_put_({disc > 1.0e+10}, 1.0e+10);
+                    }
+                    if ((disc < -1.0e+10).any().item<bool>())
+                    {
+                        disc.index_put_({disc < -1.0e+10}, -1.0e+10);
+                    }
+
                     std::cerr << "disc " << disc << std::endl;
-                    std::cerr << "disc.index({m2_4_2}) < 0=" << (disc < 0).all(1) << std::endl;
+
                     auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {

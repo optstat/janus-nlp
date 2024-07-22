@@ -23,17 +23,39 @@ torch::Tensor J(torch::Tensor& x) {
     }
 }
 
+TensorDual J(TensorDual& x) {
+    
+    int M = x.r.size(0);
+    return 0.5*x.square().sum();
+}
+
+
 torch::Tensor cubic(torch::Tensor& x, torch::Tensor& params) {
     int M = x.size(0);
 
     return (x+1.0).pow(3);
 }
 
+TensorDual cubic_dual(TensorDual& x,TensorDual& params) {
+    int M = x.r.size(0);
+
+    return (x+1.0).pow(3);
+}
+
+
 // Gradient of the quadratic function
 torch::Tensor cubic_gradient(torch::Tensor& x, torch::Tensor& params) {
     int M = x.size(0);
     return 3.0*(x+1.0).pow(2);
 }
+
+// Gradient of the quadratic function
+TensorDual cubic_gradient_dual(TensorDual& x, TensorDual& params) {
+    int M = x.r.size(0);
+    return 3.0*(x+1.0).pow(2);
+}
+
+
 torch::Tensor func2d(const torch::Tensor& x, const torch::Tensor& params) {
 
     int M = x.size(0);
@@ -45,9 +67,37 @@ torch::Tensor func2d(const torch::Tensor& x, const torch::Tensor& params) {
     return y;
 }
 
-torch::Tensor jac2d(const torch::Tensor& x, const torch::Tensor& params) {
+TensorDual func2d_dual(const TensorDual& x, const TensorDual& params) {
+
+    int M = x.r.size(0);
+    auto y = TensorDual(torch::zeros({M, 2}, torch::dtype(torch::kFloat64)),
+                        torch::zeros({M, 2, x.d.size(2)}, torch::dtype(torch::kFloat64)));    
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    y.index_put_({Slice(), 0}, x1.pow(2)+x2.pow(2)-4.0);
+    y.index_put_({Slice(), 1}, x2+x1.exp()-1.0);
+    return y;
+}
+
+
+torch::Tensor jac2d(const torch::Tensor& x, const torch::Tensor& params) 
+{
     int M = x.size(0);
     torch::Tensor jac = torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64));
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    jac.index_put_({Slice(), 0, 0}, 2*x1);
+    jac.index_put_({Slice(), 0, 1}, 2*x2);
+    jac.index_put_({Slice(), 1, 0}, x1.exp());
+    jac.index_put_({Slice(), 1, 1}, 1.0);
+    return jac;
+}
+
+TensorMatDual jac2d_dual(const TensorDual& x, const TensorDual& params) 
+{
+    int M = x.r.size(0);
+    TensorMatDual jac = TensorMatDual(torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64)),
+                                      torch::zeros({M, 2, 2, x.d.size(2)}, torch::dtype(torch::kFloat64)));
     auto x1 = x.index({Slice(), 0});
     auto x2 = x.index({Slice(), 1});
     jac.index_put_({Slice(), 0, 0}, 2*x1);
@@ -60,18 +110,11 @@ torch::Tensor jac2d(const torch::Tensor& x, const torch::Tensor& params) {
 
 
 
-TEST(LineSearchTest, Cubic) {
+TEST(LineSearchTest, Cubic) 
+{
     // Parameters for the quadratic function
     int M = 1;
-    torch::Tensor A = torch::zeros({M, 2, 2}, torch::kDouble);
-    A.index_put_({Slice(), 0, 0}, 7.0);
-    A.index_put_({Slice(), 0, 1}, 5.0);
-    A.index_put_({Slice(), 1, 0}, 2.0);
-    A.index_put_({Slice(), 1, 1}, 6.0);
-    torch::Tensor b = torch::zeros({M, 2}, torch::kDouble);
-    b.index_put_({Slice(), 0}, 8.0);
-    b.index_put_({Slice(), 1}, -8.0);
-    auto params = torch::cat({A.flatten({1}), b}, 1);
+    auto params = torch::zeros({M, 2}, torch::kDouble);
 
     // Initial guess
     torch::Tensor x0 = torch::ones({M, 2}, torch::kDouble);
@@ -100,6 +143,8 @@ TEST(LineSearchTest, Cubic) {
     //std::cerr << (J_new < J0) << std::endl;
     EXPECT_TRUE((J_new < J0).all().item<bool>());
 }
+
+
 
 TEST(LineSearchTest, 2DFunction) {
     // Parameters for the quadratic function
@@ -147,6 +192,55 @@ TEST(LineSearchTest, 2DFunction) {
     EXPECT_TRUE((J_new < J0).all().item<bool>());
 
 }
+
+
+TEST(LineSearchDualTest, Cubic) 
+{
+    // Parameters for the quadratic function
+    int M = 1;
+    int D = 2;
+    // Initial guess
+    TensorDual x0 = TensorDual(torch::ones({M, 2}, torch::kDouble),
+                               torch::zeros({M, 2, D}, torch::kDouble));
+    for (int i = 0; i < M; i++)
+    {
+        x0.index_put_({i, 0}, 0.0+0.01*i);
+        x0.index_put_({i, 1}, 0.0+0.01*i);
+    }
+    TensorDual xmin = TensorDual(torch::ones({M, 2}, torch::kDouble)*-1000,
+                                    torch::zeros({M, 2, D}, torch::kDouble));   
+    TensorDual xmax = TensorDual(torch::ones({M, 2}, torch::kDouble)*1000,
+                                    torch::zeros({M, 2, D}, torch::kDouble));   
+
+    TensorDual stpmax = TensorDual(torch::ones({M,1}, torch::kDouble),
+                                    torch::zeros({M, 1, D}, torch::kDouble));   
+    torch::Tensor check = torch::zeros({M}, torch::kBool);
+    auto params = TensorDual(torch::zeros({M, 2}, torch::dtype(torch::kFloat64)),
+                             torch::zeros({M, 2, D}, torch::dtype(torch::kFloat64)));
+    // Function value and gradient at the initial guess
+    auto f0 = cubic_dual(x0, params);
+    auto J0 = J(f0);
+    auto g = cubic_gradient_dual(x0, params);
+
+    // Search direction (negative gradient)
+    TensorDual p = -g;
+    // Perform line search
+    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTeD(x0, 
+                                                             f0, 
+                                                             J0, 
+                                                             g, 
+                                                             p, 
+                                                             stpmax, 
+                                                             params, 
+                                                             xmin, 
+                                                             xmax, 
+                                                             cubic_dual);
+
+    // Print the results
+    //std::cerr << (J_new < J0) << std::endl;
+    EXPECT_TRUE((J_new < J0).all().item<bool>());
+}
+
 
 
 
