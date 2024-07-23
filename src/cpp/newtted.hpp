@@ -11,11 +11,11 @@ namespace janus
 {
 
     std::tuple<TensorDual, torch::Tensor> newtTeD(TensorDual &x,
-                                               const TensorDual &params,
-                                               const TensorDual &xmin,
-                                               const TensorDual &xmax,
-                                               const std::function<TensorDual(const TensorDual &, const TensorDual &)> &func,
-                                               const std::function<TensorMatDual(const TensorDual &, const TensorDual &)> &jacfunc)
+                                                  const TensorDual &params,
+                                                  const TensorDual &xmin,
+                                                  const TensorDual &xmax,
+                                                  const std::function<TensorDual(const TensorDual &, const TensorDual &)> &func,
+                                                  const std::function<TensorMatDual(const TensorDual &, const TensorDual &)> &jacfunc)
     {
         int MAXITS = 500;
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J

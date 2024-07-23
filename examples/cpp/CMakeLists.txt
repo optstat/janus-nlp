@@ -40,7 +40,7 @@ set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}")
 #endif()
 
 # Specify the executable
-set(SOURCE_FILE1 newt_vdp_example.cpp)
+set(SOURCE_FILE1 newted_vdp_example.cpp)
 set(SOURCE_FILE2 newt_dubins_example.cpp)
 
 add_executable(vdpnewtexample ${SOURCE_FILE1})
