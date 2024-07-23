@@ -171,19 +171,6 @@ namespace janus
                     disc.index_put_({m2_4_2}, b.index({m2_4_2}).contiguous().square() -
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
-                    std::cerr << "disc.index({m2_4_2}) < 0=" << (disc < 0).all(1) << std::endl;
-                    //Cap the discriminator so it is never above a large number
-                    if ((disc > 1.0e+10).any().item<bool>())
-                    {
-                        disc.index_put_({disc > 1.0e+10}, 1.0e+10);
-                    }
-                    if ((disc < -1.0e+10).any().item<bool>())
-                    {
-                        disc.index_put_({disc < -1.0e+10}, -1.0e+10);
-                    }
-                    std::cerr << "disc " << disc << std::endl;
-
-
                     auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {
@@ -209,6 +196,29 @@ namespace janus
                                                      (b.index({m2_4_2_3}).contiguous() +
                                                       disc.index({m2_4_2_3}).contiguous().sqrt()));
                     }
+                    TensorDual one = TensorDual::ones_like(tmplam);
+                    TensorDual zeros = TensorDual::zeros_like(tmplam);
+                    //Cap the discriminator so it is never above a large number
+                    if ( torch::isinf(disc.r).any().item<bool>() )
+                    {
+                        disc.index_put_({torch::isinf(disc.r)}, 1.0e+10*one);
+                    }
+                    if ( torch::isnan(disc.r).any().item<bool>() )
+                    {
+                        disc.index_put_({torch::isnan(disc.r)}, zeros);
+                    }
+                    
+                    if ((tmplam > 1.0e+10).any().item<bool>())
+                    {
+                        tmplam.index_put_({disc > 1.0e+10}, 1.0e+10);
+                    }
+                    if ((tmplam < -1.0e+10).any().item<bool>())
+                    {
+                        tmplam.index_put_({disc < -1.0e+10}, -1.0e+10);
+                    }
+
+
+
                     auto m2_4_2_4 = m2_4_2 & 
                                     (tmplam > 0.5 * alam).all(1);
                     if (m2_4_2_4.eq(true_t).any().item<bool>())

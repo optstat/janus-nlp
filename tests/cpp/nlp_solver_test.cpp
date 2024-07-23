@@ -23,7 +23,7 @@ torch::Tensor J(torch::Tensor& x) {
     }
 }
 
-TensorDual J(TensorDual& x) {
+TensorDual J(const TensorDual& x) {
     
     int M = x.r.size(0);
     return 0.5*x.square().sum();
@@ -255,6 +255,21 @@ torch::Tensor func(const torch::Tensor& x, const torch::Tensor& params)
     return y;
 }
 
+TensorDual func_dual(const TensorDual& x, const TensorDual& params) 
+{
+    int M = x.r.size(0);
+    auto y = TensorDual(torch::zeros({M, 2}, torch::dtype(torch::kFloat64)),
+                        torch::zeros({M, 2, x.d.size(2)}, torch::dtype(torch::kFloat64)));
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    auto tmp1 = x2.pow(2)+x1.pow(2)-4.0;
+    y.index_put_({Slice(), Slice(0,1)}, tmp1);
+    auto tmp2 = x2-x1.exp();
+    y.index_put_({Slice(), Slice(1,2)}, tmp2);
+    return y;
+}
+
+
 torch::Tensor jac(const torch::Tensor& x, const torch::Tensor& params) {
     int M = x.size(0);
     torch::Tensor jac = torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64));
@@ -264,6 +279,20 @@ torch::Tensor jac(const torch::Tensor& x, const torch::Tensor& params) {
     jac.index_put_({Slice(), 0, 1}, 2*x2);
     jac.index_put_({Slice(), 1, 0}, -x1.exp());
     jac.index_put_({Slice(), 1, 1}, 1.0);
+    return jac;
+}
+
+
+TensorMatDual jac_dual(const TensorDual& x, const TensorDual& params) {
+    int M = x.r.size(0);
+    auto jac = TensorMatDual(torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64)),
+                             torch::zeros({M, 2, 2, x.d.size(2)}, torch::dtype(torch::kFloat64)));  
+    auto x1 = x.index({Slice(), 0});
+    auto x2 = x.index({Slice(), 1});
+    jac.index_put_({Slice(), Slice(0,1), 0}, 2*x1);
+    jac.index_put_({Slice(), Slice(0,1), 1}, 2*x2);
+    jac.index_put_({Slice(), Slice(1,2), 0}, -x1.exp());
+    jac.index_put_({Slice(), Slice(1,2), 1}, 1.0);
     return jac;
 }
 
@@ -290,6 +319,32 @@ TEST(NewtGlobalTest, 2DFunction) {
   //std::cout << "Error=" << Jfunc(func(roots, params)) << std::endl;
   EXPECT_TRUE(torch::allclose(errors, sols));
 }
+
+TEST(NewtGlobalDualTest, 2DFunctionDual) {
+  int M =10;
+  TensorDual x0 = TensorDual(torch::ones({M, 2}, torch::dtype(torch::kFloat64)),
+                                torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64)));    
+  for ( int i=0; i < M; i++) {
+    x0.index_put_({i, 0}, 2.0+0.1*i);
+    x0.index_put_({i, 1}, 1.0+0.1*i);
+  }
+  TensorDual xmin = TensorDual::ones_like(x0)*-1000;
+  TensorDual xmax = TensorDual::ones_like(x0)*1000;
+
+  TensorDual params = TensorDual(torch::zeros({M, 2}, torch::dtype(torch::kFloat64)),
+                                    torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64))); 
+  auto res = newtTeD(x0, params, xmin, xmax, func_dual, jac_dual);
+  auto roots = std::get<0>(res);
+  auto check = std::get<1>(res);
+  auto errors = J(func_dual(roots, params));
+  auto sols = TensorDual::zeros_like(errors);
+  
+  //std::cout << "Root=" << roots << std::endl;
+  //std::cout << "Check=" << check << std::endl;
+  //std::cout << "Error=" << Jfunc(func(roots, params)) << std::endl;
+  EXPECT_TRUE(torch::allclose(errors.r, sols.r));
+}
+
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

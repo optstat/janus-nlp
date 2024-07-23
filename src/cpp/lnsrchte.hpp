@@ -210,6 +210,27 @@ namespace janus
                                                      (b.index({m2_4_2_3}).contiguous() +
                                                       disc.index({m2_4_2_3}).contiguous().sqrt()));
                     }
+                    torch::Tensor one = torch::ones_like(tmplam);
+                    torch::Tensor zeros = torch::zeros_like(tmplam);
+                    //Cap the discriminator so it is never above a large number
+                    if ( torch::isinf(disc).any().item<bool>() )
+                    {
+                        disc.index_put_({torch::isinf(disc)}, 1.0e+10*one);
+                    }
+                    if ( torch::isnan(disc).any().item<bool>() )
+                    {
+                        disc.index_put_({torch::isnan(disc)}, zeros);
+                    }
+                    
+                    if ((tmplam > 1.0e+10).any().item<bool>())
+                    {
+                        tmplam.index_put_({disc > 1.0e+10}, 1.0e+10);
+                    }
+                    if ((tmplam < -1.0e+10).any().item<bool>())
+                    {
+                        tmplam.index_put_({disc < -1.0e+10}, -1.0e+10);
+                    }
+
                     auto m2_4_2_4 = m2_4_2 & 
                                     (tmplam > 0.5 * alam).all(1);
                     if (m2_4_2_4.eq(true_t).any().item<bool>())

@@ -1,5 +1,5 @@
-#ifndef newt_HPP_INCLUDED
-#define newt_HPP_INCLUDED
+#ifndef newte_HPP_INCLUDED
+#define newte_HPP_INCLUDED
 #include <torch/torch.h>
 #include <iostream>
 #include <chrono>
@@ -17,7 +17,7 @@ namespace janus
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &func,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &jacfunc)
     {
-        int MAXITS = 100;
+        int MAXITS = 500;
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J
         auto f = func(x, params);
         auto jac  = jacfunc(x, params);

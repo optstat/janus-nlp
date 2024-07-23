@@ -1,5 +1,5 @@
-#ifndef newt_HPP_INCLUDED
-#define newt_HPP_INCLUDED
+#ifndef newted_HPP_INCLUDED
+#define newted_HPP_INCLUDED
 #include <torch/torch.h>
 #include <iostream>
 #include <chrono>
