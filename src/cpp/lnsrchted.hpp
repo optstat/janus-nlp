@@ -7,6 +7,7 @@
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 
+
 namespace janus
 {
 
@@ -86,32 +87,50 @@ namespace janus
                          TensorDual::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                          p.index({m2}).contiguous()});
             // Check if the new x is within bounds
-            auto m2_1_1 = (xupdt < xmin.index({m2})).all(1);    
+            std::cerr << "xupdt < xmin.index({m2})=" << (xupdt < xmin.index({m2})) << std::endl;
+            auto m2_1_1 = (xupdt < xmin.index({m2}));
+            m2_1_1=m2_1_1.dim()> 1 ? m2_1_1.all(1) : m2_1_1;   
             if (m2_1_1.eq(true_t).any().item<bool>())
             {
-                xupdt.index_put_({m2_1_1}, xmin.index({m2_1_1}));
+                auto xupdt_copy = xupdt.clone();
+                xupdt_copy.index_put_({m2_1_1}, xmin.index({m2_1_1}));
+                xupdt = xupdt_copy;
                 //also update the lambda factor
-                alam.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
+                auto alam_copy = alam.clone();
+                alam_copy.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
+                alam = alam_copy;
             }
             auto m2_1_2 = (xupdt > xmax.index({m2}));
             if (m2_1_2.eq(true_t).any().item<bool>())
             {
-                xupdt.index_put_({m2_1_2}, xmax.index({m2_1_2}));
+                auto xupdt_copy = xupdt.clone();
+                xupdt_copy.index_put_({m2_1_2}, xmax.index({m2_1_2}));
+                xupdt = xupdt_copy;
                 //also update the lambda factor
-                alam.index_put_({m2_1_2}, (xmax.index({m2_1_2}) - xold.index({m2_1_2})) / p.index({m2_1_2}));
+                auto alam_copy = alam.clone();
+                alam_copy.index_put_({m2_1_2}, (xmax.index({m2_1_2}) - xold.index({m2_1_2})) / p.index({m2_1_2}));
+                alam = alam_copy;
             }
-            x.index_put_({m2}, xupdt);
+            auto x_copy = x.clone();
+            x_copy.index_put_({m2}, xupdt);
+            x = x_copy;
             auto xm2 = x.index({m2}).contiguous();
             auto paramsm2 = params.index({m2}).contiguous();
-            Jres.index_put_({m2}, Jfunc(func(xm2, paramsm2)));
+            auto Jres_copy = Jres.clone();
+            Jres_copy.index_put_({m2}, Jfunc(func(xm2, paramsm2)));
+            Jres = Jres_copy;
             // This is possibly a multi-dimensional function so we convert to scalar
 
-            auto m2_1 = m2 & (alam < alamin).all(1);
+            auto m2_1 = m2 & (alam < alamin);
+            m2_1 = m2_1.dim()> 1 ? m2_1.all(1) : m2_1;
             if (m2_1.eq(true_t).any().item<bool>())
             {
-                x.index_put_({m2_1}, xold.index({m2_1}));
-                check.index_put_({m2_1}, true);
-                m2.index_put_({m2_1}, false); // We are done for these samples
+                auto x_copy = x.clone();
+                x_copy.index_put_({m2_1}, xold.index({m2_1}));
+                x = x_copy;
+                //check_copy.index_put_({m2_1}, true);
+                safe_update(check, m2_1, true);
+                safe_update(m2, m2_1, false);
             }
             // Recheck m2 before the sufficiency condition
             if (m2.eq(true_t).any().item<bool>())
@@ -120,18 +139,24 @@ namespace janus
                 auto suff = (Jres.index({m2}).contiguous() <= (Jold.index({m2}).contiguous() +
                                                                ALF * alam.index({m2}).contiguous()*
                                                                slope.index({m2}).contiguous()).sum());
-                m2.index_put_({m2.clone()}, ~suff); // Sufficiency condition
+                auto m2_copy = m2.clone();
+                m2_copy.index_put_({m2.clone()}, ~suff); // Sufficiency condition
+                m2 = m2_copy;
             }
             // Check m2 after the sufficiency condition
-            auto m2_3 = m2 & (alam == 1.0).all(1);
+            auto m2_3 = m2 & (alam == 1.0);
+            m2_3 = m2_3.dim()> 1 ? m2_3.all(1) : m2_3;
             if (m2_3.any().eq(true_t).any().item<bool>())
             {
                 auto den = (2.0 * (Jres.index({m2_3}).contiguous() -
                                    Jold.index({m2_3}).contiguous() -
                                    slope.index({m2_3}).contiguous()));
-                tmplam.index_put_({m2_3}, -slope.index({m2_3}).contiguous() / den);
+                auto tmplam_copy = tmplam.clone();
+                tmplam_copy.index_put_({m2_3}, -slope.index({m2_3}).contiguous() / den);
+                tmplam = tmplam_copy;
             }
-            auto m2_4 = m2 & (alam != 1.0).all(1);
+            auto m2_4 = m2 & (alam != 1.0);
+            m2_4 = m2_4.dim()> 1 ? m2_4.all(1) : m2_4;
             if (m2_4.any().eq(true_t).any().item<bool>())
             {
                 std::cerr << "m2_4 " << m2_4 << std::endl;
@@ -147,74 +172,105 @@ namespace janus
                             Jold.index({m2_4}).contiguous() -
                             (alam2.index({m2_4}).contiguous()* 
                             slope.index({m2_4}).contiguous()).sum();
-                a.index_put_({m2_4}, (rhs1 / alam.index({m2_4}).contiguous().square() -
+                auto a_copy = a.clone();
+                a_copy.index_put_({m2_4}, (rhs1 / alam.index({m2_4}).contiguous().square() -
                                       rhs2 / alam2.index({m2_4}).contiguous().square()) /
                                       (alam.index({m2_4}).contiguous()) -
                                        alam2.index({m2_4}).contiguous());
-                b.index_put_({m2_4}, (-alam2.index({m2_4}).contiguous() * rhs1 / 
+                a = a_copy;
+                auto b_copy = b.clone();
+                b_copy.index_put_({m2_4}, (-alam2.index({m2_4}).contiguous() * rhs1 / 
                                        (alam.index({m2_4}).contiguous().square())  +
                                         alam.index({m2_4}).contiguous() * rhs2 / 
                                         (alam2.index({m2_4}).contiguous().square())) /
                                         (alam.index({m2_4}).contiguous() - alam2.index({m2_4}).contiguous()));
+                b = b_copy;
 
-
-                auto m2_4_1 = m2_4 & (a == 0).all(1);
+                auto m2_4_1 = m2_4 & (a == 0);
+                m2_4_1 = m2_4_1.dim()> 1 ? m2_4_1.all(1) : m2_4_1;
                 if (m2_4_1.eq(true_t).any().item<bool>())
                 {
-                    tmplam.index_put_({m2_4_1}, -slope.index({m2_4_1}).contiguous() / 
+                    auto tmplam_copy = tmplam.clone();
+                    tmplam_copy.index_put_({m2_4_1}, -slope.index({m2_4_1}).contiguous() / 
                                                 (2.0 * b.index({m2_4_1}).contiguous()));
+                    tmplam = tmplam_copy;
                 }
-                auto m2_4_2 = m2_4 & (a != 0.0).all(1);
+                auto m2_4_2 = m2_4 & (a != 0.0);
+                m2_4_2 = m2_4_2.dim()> 1 ? m2_4_2.all(1) : m2_4_2;
                 if (m2_4_2.eq(true_t).any().item<bool>())
                 {
                         // disc=b*b-3.0*a*slope;
+                    auto disc_copy = disc.clone();
                     disc.index_put_({m2_4_2}, b.index({m2_4_2}).contiguous().square() -
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
+                    disc = disc_copy;
                     auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {
-                      tmplam.index_put_({m2_4_2_1}, 0.5 * alam.index({m2_4_2_1}).contiguous());
+                      auto tmplam_copy = tmplam.clone();
+                      tmplam_copy.index_put_({m2_4_2_1}, 0.5 * alam.index({m2_4_2_1}).contiguous());
+                      tmplam = tmplam_copy;
                     }
+                    auto mdisc = disc >= 0.0;
+                    mdisc = mdisc.dim()> 1 ? mdisc.all(1) : mdisc;
+                    auto mb = b <= 0.0; 
+                    mb = mb.dim()> 1 ? mb.all(1) : mb;
                     auto m2_4_2_2 = m2_4_2 & 
-                                   (disc >= 0.0).all(1) & 
-                                   (b <= 0).all(1);
+                                   mdisc & 
+                                   mb;
                     if (m2_4_2_2.eq(true_t).any().item<bool>())
                     {
                       // tmplam=(-b+sqrt(disc))/(3.0*a);
-                      tmplam.index_put_({m2_4_2_2}, (-b.index({m2_4_2_2}).contiguous() +
+                      auto tmplam_copy = tmplam.clone();
+                      tmplam_copy.index_put_({m2_4_2_2}, (-b.index({m2_4_2_2}).contiguous() +
                                                      disc.index({m2_4_2_2}).contiguous().sqrt()) /
                                                      (3.0 * a.index({m2_4_2_2}).contiguous()));
+                      tmplam = tmplam_copy;
                     }
+                    mb = b > 0.0;
+                    mb = mb.dim()> 1 ? mb.all(1) : mb;
+                    mdisc = disc >= 0.0;
+                    mdisc = mdisc.dim()> 1 ? mdisc.all(1) : mdisc;
                     auto m2_4_2_3 = m2_4_2 & 
-                                    (b > 0.0).all(1) & 
-                                    (disc >= 0).all(1);
+                                    mb & 
+                                    mdisc;
                     if (m2_4_2_3.eq(true_t).any().item<bool>())
                     {
                         // tmplam=-slope/(b+sqrt(disc));
-                        tmplam.index_put_({m2_4_2_3}, -slope.index({m2_4_2_3}).contiguous() /
+                        auto tmplam_copy = tmplam.clone();
+                        tmplam_copy.index_put_({m2_4_2_3}, -slope.index({m2_4_2_3}).contiguous() /
                                                      (b.index({m2_4_2_3}).contiguous() +
                                                       disc.index({m2_4_2_3}).contiguous().sqrt()));
+                        tmplam = tmplam_copy;
                     }
                     TensorDual one = TensorDual::ones_like(tmplam);
                     TensorDual zeros = TensorDual::zeros_like(tmplam);
                     //Cap the discriminator so it is never above a large number
                     if ( torch::isinf(disc.r).any().item<bool>() )
                     {
-                        disc.index_put_({torch::isinf(disc.r)}, 1.0e+10*one);
+                        auto disc_copy = disc.clone();
+                        disc_copy.index_put_({torch::isinf(disc.r)}, 1.0e+10*one);
+                        disc = disc_copy;
                     }
                     if ( torch::isnan(disc.r).any().item<bool>() )
                     {
-                        disc.index_put_({torch::isnan(disc.r)}, zeros);
+                        auto disc_copy = disc.clone();
+                        disc_copy.index_put_({torch::isnan(disc.r)}, zeros);
+                        disc = disc_copy;
                     }
                     
                     if ((tmplam > 1.0e+10).any().item<bool>())
                     {
-                        tmplam.index_put_({disc > 1.0e+10}, 1.0e+10);
+                        auto tmplam_copy = tmplam.clone();
+                        tmplam_copy.index_put_({disc > 1.0e+10}, 1.0e+10);
+                        tmplam = tmplam_copy;
                     }
                     if ((tmplam < -1.0e+10).any().item<bool>())
                     {
-                        tmplam.index_put_({disc < -1.0e+10}, -1.0e+10);
+                        auto tmplam_copy = tmplam.clone();
+                        tmplam_copy.index_put_({disc < -1.0e+10}, -1.0e+10);
+                        tmplam = tmplam_copy;
                     }
 
 
@@ -223,7 +279,9 @@ namespace janus
                                     (tmplam > 0.5 * alam).all(1);
                     if (m2_4_2_4.eq(true_t).any().item<bool>())
                     {
-                      tmplam.index_put_({m2_4_2_4}, 0.5 * alam.index({m2_4_2_4}).contiguous());
+                      auto tmplam_copy = tmplam.clone();
+                      tmplam_copy.index_put_({m2_4_2_4}, 0.5 * alam.index({m2_4_2_4}).contiguous());
+                      tmplam = tmplam_copy;
                     }
 
                 }
@@ -231,11 +289,17 @@ namespace janus
             
             if (m2.eq(true_t).any().item<bool>())
             {
-                alam2.index_put_({m2}, alam.index({m2}));
-                J2.index_put_({m2}, Jres.index({m2}));
+                auto alam2_copy = alam2.clone();
+                alam2_copy.index_put_({m2}, alam.index({m2}));
+                alam2 = alam2_copy;
+                auto J2_copy = J2.clone();
+                J2_copy.index_put_({m2}, Jres.index({m2}));
+                J2 = J2_copy;
                 auto tmplamm2 = tmplam.index({m2});
                 auto alamm2 = alam.index({m2}) * 0.1;
-                alam.index_put_({m2}, max(tmplamm2, alamm2));
+                auto alam_copy = alam.clone();
+                alam_copy.index_put_({m2}, max(tmplamm2, alamm2));
+                alam = alam_copy;
             }
         }
         return std::make_tuple(x, Jres, p, check);

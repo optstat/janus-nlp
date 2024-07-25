@@ -8,6 +8,8 @@
 #include <janus/janus_ode_common.hpp>
 #include "../../src/cpp/lnsrchted.hpp"
 #include "../../src/cpp/newtted.hpp"
+#include "../../src/cpp/newtte.hpp"
+#include "../../src/cpp/lnsrchte.hpp"
 #include "matplotlibcpp.h"
 
 using namespace janus;
@@ -20,13 +22,14 @@ namespace plt = matplotlibcpp;
  * the Jacobian
 */
 using Slice = torch::indexing::Slice;
+//Global parameters for simplicity
 double W = 1.0;
 double x1f = 1.0;
 double x2f = -1.25;
 double x10 = 2.0;
 double x20 = 0.0;
 double ft = 1.0;
-double mu=1.0;
+
 //Guesses for the initial values of the Lagrange multipliers
 double p10 = -10.0;
 double p20 = 10.0;
@@ -49,17 +52,18 @@ TensorDual control_function_dual(const TensorDual& u,
 }
 
 
-TensorDual control_grad_function_dual(const TensorDual& u,
+TensorMatDual control_grad_function_dual(const TensorDual& u,
                                          const TensorDual& params) 
 {
-  auto x1 = params.index({Slice(), 0});
-  auto x2 = params.index({Slice(), 1});
-  auto p1 = params.index({Slice(), 2});
-  auto p2 = params.index({Slice(), 3});
+  auto x1 = params.index({Slice(), Slice(0,1)});
+  auto x2 = params.index({Slice(), Slice(1,2)});
+  auto p1 = params.index({Slice(), Slice(2,3)});
+  auto p2 = params.index({Slice(), Slice(3,4)});
   //We have to solve
   auto res = -u.log()/(u*u)+(u*u).reciprocal()+1;
+  auto jac = res.unsqueeze(2);
 
-  return res; //Return the through copy elision
+  return jac; //Return the through copy elision
 } 
 
 
@@ -78,7 +82,7 @@ TensorDual control_dual(const TensorDual& u_guess,
   TensorDual umin = TensorDual::zeros_like(x1);
   TensorDual umax = TensorDual::zeros_like(x1);  
   umin.index_put_({Slice(), Slice(0,1)}, 0.001);
-  umax.index_put_({Slice(), Slice(0,1)}, 1000.0);
+  umax.index_put_({Slice(), Slice(0,1)}, 100.0);
   TensorDual u = u_guess.clone();
   
 
@@ -112,7 +116,8 @@ torch::Tensor hamiltonian(const torch::Tensor& x,
                           double W) {
   //Wrap the call to the dual number version
   int M = x.size(0);
-  torch::Tensor dummy = torch::zeros({M, 1}, torch::kFloat64);
+  int N = x.size(1);
+  torch::Tensor dummy = torch::zeros({M, N, 1}, torch::kFloat64);
   auto x_dual = TensorDual(x.clone(), dummy.clone());
   auto p_dual = TensorDual(p.clone(), dummy.clone());
   auto H_dual = hamiltonian_dual(x_dual, p_dual, W);
@@ -126,7 +131,7 @@ torch::Tensor hamiltonian(const torch::Tensor& x,
  * Dynamics calculated according the hamiltonian method
  */
 TensorDual vdpdyns_ham(const TensorDual& t, const TensorDual& y, const TensorDual& params) {
-  auto dyns= evalDynsDual<double>(y, W, hamiltonian);
+  auto dyns=  <double>(y, W, hamiltonian);
   //std::cerr << "dyns=";
   //janus::print_dual(dyns);
   return dyns;
@@ -168,49 +173,47 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> vdpEvents
  * of optimality as defined by the Variational approach to 
  * optimal control
  */
-TensorDual propagate(const TensorDual& x, const TensorDual& params) 
+torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params) 
 {
 
   //set the device
   //torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
-  int M = x.r.size(0); //Number of samples
-  int D = 3; //Number of variables
-  int N = 5; //Length of the dual vector in order [p1, p2, x1, x2, tf]
+  int M = x.size(0); //Number of samples
+  int N = 4; //Number of variables
+  int D = 1; //Length of the dual vector keep it small to speed up the calculation since we don't need 
+             //dual numbers here but to avoid writing two different methods for dynamics and jacobian
   auto device = x.device();
 
-  //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  TensorDual y = TensorDual(torch::zeros({M, 4}, torch::kF64).to(device), torch::zeros({M,4,N}, torch::kF64).to(device));
-  for (int i=0; i < M; i++) {
-    y.index_put_({i, 0}, x.index({i, 0}));
-    y.index_put_({i, 1}, x.index({i, 1}));
-    y.index_put_({i, 2}, x10);
-    y.index_put_({i, 3}, x20);
-    y.index_put_({i, 0, 0}, 1.0);
-    y.index_put_({i, 1, 1}, 1.0);
-    y.index_put_({i, 2, 2}, 1.0);
-    y.index_put_({i, 3, 3}, 1.0);
-  }
+  TensorDual y = TensorDual(torch::zeros({M, N}, torch::kF64).to(device), 
+                            torch::zeros({M,N,D}, torch::kF64).to(device));
+  y.r.index_put_({Slice(), Slice(0,1)}, x.index({Slice(), Slice(0,1)}));  //p1
+  y.r.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), Slice(1,2)}));  //p2
+  y.r.index_put_({Slice(), Slice(2,3)}, x10);                       //x1
+  y.r.index_put_({Slice(), Slice(3,4)}, x20);                       //x2
+
  
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  TensorDual tspan = TensorDual(torch::rand({M, 2}, torch::kFloat64).to(device), torch::zeros({M,2,N}, torch::kFloat64).to(device));
-  tspan.r.index_put_({Slice(), 0}, 0.0);
+  TensorDual tspan = TensorDual(torch::rand({M, 2}, torch::kFloat64).to(device), 
+                                torch::zeros({M,2,1}, torch::kFloat64).to(device));
+  tspan.r.index_put_({Slice(), Slice{0,1}}, 0.0);
   //tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
-  tspan.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), 2}));
+  tspan.r.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), Slice(2,3)}));
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //*options.EventsFcn = vdpEvents;
+  //Give the ODE integrator modest tolerances and a maximum number of steps
+  //to ensure that reasonable execution times
   options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
   options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
-  options.MaxNbrStep = 1000;
+  options.MaxNbrStep = 200; 
 
-
-  //Create an instance of the Radau5 class
-  //Call the solve method of the Radau5 class
+  //Create l values this is a C++ requirement for non constant references
   auto tspanc = tspan.clone();
   auto yc = y.clone();
-  auto paramsc = params.clone();
+  auto paramsc = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
+
   janus::RadauTeD r(vdpdyns_ham, jac_ham, tspanc, yc, options, paramsc);   // Pass the correct arguments to the constructor`
   int rescode = r.solve();
   //std::cerr << "r.Last=";
@@ -218,63 +221,73 @@ TensorDual propagate(const TensorDual& x, const TensorDual& params)
   //std::cerr << "r.h=";
   //janus::print_dual(r.h);
   
-  auto pf = r.y.index({Slice(), Slice(0,2)});
-  auto xf = r.y.index({Slice(), Slice(2,4)});
   if (rescode != 0) {
     std::cerr << "propagation failed\n";
     //Return a large result to make sure the solver does not fail
-    return TensorDual::ones_like(x)*1.0e6;
+    return torch::ones_like(x)*1.0e6;
   }
+  auto pf = r.y.index({Slice(), Slice(0,2)});
+  auto xf = r.y.index({Slice(), Slice(2,4)});
+  //Now calculate the boundary conditionsx
   auto x1delta = r.y.index({Slice(), Slice(2,3)})-x1f;
   auto x2delta = r.y.index({Slice(), Slice(3,4)})-x2f;
   auto Hf = hamiltonian_dual(xf, pf, W);
-  TensorDual res = x*0.0;
+  torch::Tensor res = x*0.0;
   //The hamiltonian is zero at the terminal time 
   //because this is a minimum time problem
-  res.index_put_({Slice(), 0}, x1delta);
-  res.index_put_({Slice(), 1}, x2delta);
-  res.index_put_({Slice(), 2}, Hf);
+  res.index_put_({Slice(), Slice(0,1)}, x1delta.r);
+  res.index_put_({Slice(), Slice(1,2)}, x2delta.r);
+  res.index_put_({Slice(), Slice(2,3)}, Hf.r);
   std::cerr << "propagation result=";
-  janus::print_dual(res);
+  janus::print_tensor(res);
 
   return res;
 
 }
 
-TensorDual jac_eval(const TensorDual& x, const TensorDual& params) {
+
+/**
+ * Calculate the Jacobian of the propagation function
+ * 
+ */
+torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   //set the device
   //torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
-  int M = x.r.size(0);
-  int D = 4;//Length of the state space vector in order [p1, p2, x1, x2] 
-  int N = 5;//Length of the dual vector in order [p1, p2, x1, x2, tf]
+  int M = x.size(0);
+  int N = 4;//Length of the state space vector in order [p1, p2, x1, x2] 
+  int D = 5;//Length of the dual vector in order [p1, p2, x1, x2, tf]
 
 
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  TensorDual y = TensorDual(torch::zeros({M, D}, x.r.options()), torch::zeros({M,D,N},x.r.options()));
-  for (int i=0; i < M; i++) {
-    y.index_put_({i, 0}, x.index({i, 0}));
-    y.index_put_({i, 1}, x.index({i, 1}));
-    y.index_put_({i, 2}, x10);
-    y.index_put_({i, 3}, x20);
-  }
+  TensorDual y = TensorDual(torch::zeros({M, N}, x.options()), torch::zeros({M,N,D},x.options()));
+  y.r.index_put_({Slice(), Slice(0,1)}, x.index({Slice(), Slice(0,1)}));
+  y.r.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), Slice(1,2)}));
+  y.r.index_put_({Slice(), Slice(2,3)}, x10);
+  y.r.index_put_({Slice(), Slice(3,4)}, x20);
+
+  //Set the sensitivities to the initial conditions
+  y.d.index_put_({Slice(), 0, 0}, 1.0);
+  y.d.index_put_({Slice(), 1, 1}, 1.0);
+  y.d.index_put_({Slice(), 2, 2}, 1.0);
+  y.d.index_put_({Slice(), 3, 3}, 1.0);
  
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  TensorDual tspan = TensorDual(torch::rand({M, 2}, x.r.options()), torch::zeros({M,2,N}, x.r.options()));
-  tspan.r.index_put_({Slice(), 0}, 0.0);
+  TensorDual tspan = TensorDual(torch::rand({M, 2}, x.options()), torch::zeros({M,2,N}, x.options()));
+  tspan.r.index_put_({Slice(), Slice(0,1)}, 0.0);
   //tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
-  tspan.index_put_({Slice(), 1}, x.index({Slice(), 2}));
+  tspan.r.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), Slice(2,3)}));
+  tspan.d.index_put_({Slice(), 1, -1}, 1.0);  //Sensitivity to the final time
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   janus::OptionsTeD options = janus::OptionsTeD(); //Initialize with default options
-  //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  //*options.EventsFcn = vdpEvents;
-  options.RelTol = torch::tensor({1e-3}, x.r.options());
-  options.AbsTol = torch::tensor({1e-6}, x.r.options());
-  //Create an instance of the Radau5 class
-  options.MaxNbrStep = 1000;
+  options.RelTol = torch::tensor({1e-3}, x.options());
+  options.AbsTol = torch::tensor({1e-6}, x.options());
+  
+  options.MaxNbrStep = 200;
   auto tspanc = tspan.clone();
   auto yc = y.clone();
-  auto paramsc = params.clone();
+  auto paramsc = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
+
 
   janus::RadauTeD r(vdpdyns_ham, jac_ham, tspanc, yc, options, paramsc);   // Pass the correct arguments to the constructor
   //Call the solve method of the Radau5 class
@@ -283,8 +296,7 @@ TensorDual jac_eval(const TensorDual& x, const TensorDual& params) {
   //std::cerr << r.Last << "\n";
   //std::cerr << "r.h=";
   //janus::print_dual(r.h);
-  TensorDual jacVal = TensorDual(torch::zeros({M, 3, 3}, torch::kFloat64),
-                                  torch::zeros({M, 3, 3, N}, torch::kFloat64)); 
+  torch::Tensor jacVal = torch::zeros({M, 3, 3}, torch::kFloat64); 
 
   if (rescode != 0) {
     std::cerr << "propagation failed\n";
@@ -292,7 +304,7 @@ TensorDual jac_eval(const TensorDual& x, const TensorDual& params) {
     return jacVal;
   }
 
-
+  //Extract the final values from the solver
   auto pf = r.y.index({Slice(), Slice(0,2)});
   auto xf = r.y.index({Slice(), Slice(2,4)});
   std::cerr << "xf=";
@@ -304,17 +316,11 @@ TensorDual jac_eval(const TensorDual& x, const TensorDual& params) {
   std::cerr << "x2delta=";
   janus::print_dual(x2delta);
   auto Hf = hamiltonian_dual(xf, pf, W);
-  jacVal.index_put_({Slice(), 0, 0}, x1delta.index({Slice(), 0,0}));
-  jacVal.index_put_({Slice(), 0, 1}, x1delta.index({Slice(), 0,1}));
-  jacVal.index_put_({Slice(), 0, 2}, x1delta.index({Slice(), 0,N-1}));
-  jacVal.index_put_({Slice(), 1, 0}, x2delta.index({Slice(), 0,0}));
-  jacVal.index_put_({Slice(), 1, 1}, x2delta.index({Slice(), 0,1}));
-  jacVal.index_put_({Slice(), 1, 2}, x2delta.index({Slice(), 0,N-1}));
-  jacVal.index_put_({Slice(), 2, 0}, Hf.index({Slice(), 0,0}));
-  jacVal.index_put_({Slice(), 2, 1}, Hf.index({Slice(), 0,1}));
-  jacVal.index_put_({Slice(), 2, 2}, Hf.index({Slice(), 0,N-1}));
+  jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(),0,0}));
+  jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(),0,1}));
+  jacVal.index_put_({Slice(), 0, 2}, x1delta.d.index({Slice(),0,N-1}));
   std::cerr << "jacobian result=";
-  janus::print_dual(jacVal);
+  janus::print_tensor(jacVal);
 
 
   return jacVal;
@@ -322,7 +328,11 @@ TensorDual jac_eval(const TensorDual& x, const TensorDual& params) {
 }
 
 
-//Create a main method for testing
+/**
+ * The goal of this example is to solve for a minimum time optimal control problem
+ * that can become very stiff very suddenly requiring the use of novel dual number
+ * sensitivity and global optimization techniques to solve the problem
+ */
 
 int main(int argc, char *argv[])
 {
@@ -330,41 +340,44 @@ int main(int argc, char *argv[])
   void (*pd)(const TensorDual&) = janus::print_dual;
   void (*pmd)(const TensorMatDual&) = janus::print_dual;
 
-  int M =1;
-  int N =3;
+  int M =1;  //Number of samples
+  int N =2;  //Number of costates
+  int D = N+1; //Dimension of the dual numbers [p1, p2, tf]
+  //The problem has three unknowns p1 p2 and final time tf
   /*
   -28.8603   1.4887   6.1901*/
 
-  torch::Tensor x0 = torch::ones({1, N}, torch::dtype(torch::kFloat64));
+  auto device = torch::kCPU;
+
+  torch::Tensor y0 = torch::ones({1, D}, torch::dtype(torch::kFloat64)).to(device);
   for ( int i=0; i < M; i++) {
-    x0.index_put_({i, 0}, p10+0.1*i);  //p1
-    x0.index_put_({i, 1}, p20+0.1*i);  //p2
-    x0.index_put_({i, 2}, ft);        //ft
+    y0.index_put_({i, 0}, p10+0.1*i);  //p1
+    y0.index_put_({i, 1}, p20+0.1*i);  //p2
+    y0.index_put_({i, 2}, ft);         //ft
   }
-  torch::Tensor params = torch::zeros_like(x0);
-  //Impose limits on the state space
-  torch::Tensor xmin = torch::zeros_like(x0);
-  xmin.index_put_({Slice(), 0}, -10000.0);
-  xmin.index_put_({Slice(), 1}, -10000.0);
-  xmin.index_put_({Slice(), 2}, 0.001);
-  torch::Tensor xmax = torch::zeros_like(x0);
-  xmax.index_put_({Slice(), 0}, 10000.0);
-  xmax.index_put_({Slice(), 1}, 10000.0);
-  xmax.index_put_({Slice(), 2}, 10.0);
-  torch::Tensor dummy = torch::zeros({M, 1}, torch::kFloat64);
-  auto x0d = TensorDual(x0.clone(), dummy.clone());
-  auto paramsd = TensorDual(params.clone(), dummy.clone());
-  auto xmind = TensorDual(xmin.clone(), dummy.clone());
-  auto xmaxd = TensorDual(xmax.clone(), dummy.clone());
 
   
-  auto res = newtTeD(x0d, paramsd, xmind, xmaxd, propagate, jac_eval);
+  torch::Tensor params = torch::zeros_like(y0);
+  //Impose limits on the state space
+  torch::Tensor ymin = torch::zeros_like(y0);
+  ymin.index_put_({Slice(), 0}, -10000.0);
+  ymin.index_put_({Slice(), 1}, -10000.0);
+  ymin.index_put_({Slice(), 2}, 0.001);
+  torch::Tensor ymax = torch::zeros_like(y0);
+  ymax.index_put_({Slice(), 0}, 10000.0);
+  ymax.index_put_({Slice(), 1}, 10000.0);
+  ymax.index_put_({Slice(), 2}, 100.0);
+
+  
+  auto res   = newtTe(y0, params, ymin, ymax, propagate, jac_eval);
   auto roots = std::get<0>(res);
   auto check = std::get<1>(res);
   std::cerr << "roots=" << roots << "\n";
   std::cerr << "check=" << check << "\n";
-  auto errors = Jfunc(propagate(roots, paramsd));
+  auto errors = Jfunc(propagate(roots, params));
   std::cerr << "errors=" << errors << "\n";
+
+  //Now propagate the final solution to get the final sensitivities
 
 
   return 0;

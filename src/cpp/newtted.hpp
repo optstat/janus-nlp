@@ -53,16 +53,31 @@ namespace janus
             count++;
             std::cerr << "Iteration count = " << count << std::endl;
             //Recalculate the function and the jacobian
-            f.index_put_({m2}, func(x.index({m2}).contiguous(),
+            auto f_copy = f.clone();
+
+            
+            f_copy.index_put_({m2}, func(x.index({m2}).contiguous(),
                                     params.index({m2}).contiguous()));
-            jac.index_put_({m2}, jacfunc(x.index({m2}).contiguous(),
+            f = f_copy;
+            auto jac_copy = jac.clone();
+
+            jac_copy.index_put_({m2}, jacfunc(x.index({m2}).contiguous(),
                                  params.index({m2}).contiguous()));
+            jac = jac_copy;
             //Calculate the gradient
-            g.index_put_({m2}, TensorMatDual::einsum("mij, mi->mj", jac.index({m2}).contiguous(),
+            auto g_copy = g.clone();
+            g_copy.index_put_({m2}, TensorMatDual::einsum("mij, mi->mj", jac.index({m2}).contiguous(),
                                                              f.index({m2}).contiguous()));
-            xold.index_put_({m2}, x.index({m2}).contiguous());
-            fold.index_put_({m2}, f.index({m2}).contiguous());
-            Jold.index_put_({m2}, J.index({m2}).contiguous());
+            g = g_copy;
+            auto xold_copy = xold.clone();
+            xold_copy.index_put_({m2}, x.index({m2}).contiguous());
+            xold = xold_copy;
+            auto fold_copy = fold.clone();
+            fold_copy.index_put_({m2}, f.index({m2}).contiguous());
+            fold = fold_copy;
+            auto Jold_copy = Jold.clone();
+            Jold_copy.index_put_({m2}, J.index({m2}).contiguous());
+            Jold = Jold_copy;
             // Since the jacobian has been recalcualted, we need to recompute the QR decomposition
             //auto [qt, r] = qrte(jac.index({check}).contiguous()); // This needs to be replaced with GMRES for vey high dimensional systems
             auto jacm2 = jac.index({m2}).contiguous();
@@ -76,7 +91,9 @@ namespace janus
             //std::cerr << "Error from LU decomposition=" << (Jacsollu - pm2).norm(2, 1) << std::endl;
             //auto Jacsolqr = torch::einsum("mij, mj->mi", {jacm2, sol});
             //std::cerr << "Error from QR decomposition=" << (Jacsolqr - pm2).norm(2, 1) << std::endl;
-            p.index_put_({m2}, sollu);
+            auto p_copy = p.clone();
+            p_copy.index_put_({m2}, sollu);
+            p = p_copy;
             // Update x, p and f
             auto xoldin = xold.index({m2}).contiguous();
             auto foldin = fold.index({m2}).contiguous();
@@ -102,17 +119,30 @@ namespace janus
             std::cerr << "Output from lnsrch " << xs << std::endl;
             std::cerr << "Error at count=" << count << " "<< js << std::endl;
             std::cerr << "checkupd at count=" << count << " "<< checkupd << std::endl;
-            x.index_put_({m2}, xs);
-            p.index_put_({m2}, ps);
-            J.index_put_({m2}, js);
-            check.index_put_({m2}, checkupd);
-
-            test.index_put_({m2}, f.index({m2}).abs().max());
+            auto x_copy = x.clone();
+            x_copy.index_put_({m2}, xs);
+            x = x_copy;
+            auto p_copy1 = p.clone();
+            p_copy1.index_put_({m2}, ps);
+            p = p_copy1;
+            auto J_copy = J.clone();
+            J_copy.index_put_({m2}, js);
+            J = J_copy;
+            auto check_copy = check.clone();
+            check_copy.index_put_({m2}, checkupd);
+            check = check_copy;
+            auto test_copy = test.clone();
+            test_copy.index_put_({m2}, f.index({m2}).abs().max());
+            test = test_copy;
             auto m2_1 = m2 & (test < TOLF);
             if (m2_1.any().eq(true_t).item<bool>())
             {
-              check.index_put_({m2_1}, false);
-              m2.index_put_({m2_1}, false);
+              auto check_copy1 = check.clone();
+              check_copy1.index_put_({m2_1}, false);
+              check = check_copy1;
+              auto m2_copy = m2.clone();
+              m2_copy.index_put_({m2_1}, false);
+              m2 = m2_copy;
             }
             
 
@@ -121,17 +151,24 @@ namespace janus
             if ((m2_2).any().equal(true_t))
             {
                 //Checks for convergence on the gradient
-                test.index_put_({m2_2}, 0.0);
+                auto test_copy = test.clone();
+                test_copy.index_put_({m2_2}, 0.0);
+                test = test_copy;
                 auto Jl = J.index({m2_2}).contiguous();
                 auto den = max(Jl, 0.5 * TensorDual::ones_like(Jl) * N);
                 auto xt = x.index({m2_2}).abs();
                 auto ONE = TensorDual::ones_like(xt);
                 auto rhs = TensorDual::einsum("mi,m->mi", {max(xt, ONE),  den.reciprocal()});
-                auto temp = TensorDual::einsum("mi,mi->m",{g.index({m2_2}).abs() ,
-                                                      rhs});
-                test.index_put_({m2_2}, temp.max());
-                check.index_put_({m2_2}, test.index({m2_2}) < TOLMIN);
-                m2.index_put_( {m2_2}, false); //We are done with this samples 
+                auto temp = TensorDual::einsum("mi,mi->m",{g.index({m2_2}).abs(),rhs});
+                auto test_copy1 = test.clone();
+                test_copy1.index_put_({m2_2}, temp.max());
+                test = test_copy1;
+                auto check_copy1 = check.clone();
+                check_copy1.index_put_({m2_2}, test.index({m2_2}) < TOLMIN);
+                check = check_copy1;
+                auto m2_copy = m2.clone();
+                m2_copy.index_put_( {m2_2}, false); //We are done with this samples
+                m2 = m2_copy; 
 
             }
             //Recheck for the check flags since they have been updated
@@ -145,8 +182,9 @@ namespace janus
                 {
                     std::cerr << "Small relative changes in x detected" << std::endl;
                 }
-
-                m2.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                auto m2_copy = m2.clone();
+                m2_copy.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                m2 = m2_copy;
             }
         }
         

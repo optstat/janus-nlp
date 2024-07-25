@@ -42,9 +42,12 @@ set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS}")
 # Specify the executable
 set(SOURCE_FILE1 newted_vdp_example.cpp)
 set(SOURCE_FILE2 newt_dubins_example.cpp)
+set(SOURCE_FILE3 newted_control_example.cpp)
 
 add_executable(vdpnewtexample ${SOURCE_FILE1})
 add_executable(dubinsnewtexample ${SOURCE_FILE2})
+add_executable(controldnewtexample ${SOURCE_FILE3})
+
 
 # Set the output directory for the executable
 set_target_properties(vdpnewtexample PROPERTIES
@@ -55,13 +58,22 @@ set_target_properties(dubinsnewtexample PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+# Set the output directory for the executable
+set_target_properties(controldnewtexample PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
+
+
 # Link libraries
 target_link_libraries(vdpnewtexample "${TORCH_LIBRARIES}")
 target_link_libraries(vdpnewtexample Python3::Python Python3::NumPy)
 
+
 target_link_libraries(dubinsnewtexample "${TORCH_LIBRARIES}")
 target_link_libraries(dubinsnewtexample Python3::Python Python3::NumPy)
 
+target_link_libraries(controldnewtexample "${TORCH_LIBRARIES}")
+target_link_libraries(controldnewtexample Python3::Python Python3::NumPy)
 
 # Ensure the executable is built when running 'make run_vdphamexample'
 add_custom_target(create_vdpnewtexample
@@ -72,3 +84,6 @@ add_custom_target(create_dubinsnewtexample
     COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target dubinsnewtexample
 )
 
+add_custom_target(create_controldnewtexample
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target constroldnewtexample
+)

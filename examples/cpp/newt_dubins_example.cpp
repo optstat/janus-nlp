@@ -159,7 +159,7 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   //set the device
   //torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
   int D = 6; //Number of variables
-  int N = 7; //Length of the dual vector in order [p1, p2, p3, x1, x2, x3, tf]
+  int N = 1; //Length of the dual vector.  To keep things simple set it to 1 since we don't need sensitivities
   auto device = x.device();
   auto p10 = x.index({Slice(), 0});
   auto p20 = x.index({Slice(), 1});
@@ -174,12 +174,6 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   y.r.index_put_({Slice(), 3}, x10.index({Slice(0,M)}));
   y.r.index_put_({Slice(), 4}, x20);
   y.r.index_put_({Slice(), 5}, x30);
-  y.d.index_put_({Slice(), 0, 0}, 1.0);
-  y.d.index_put_({Slice(), 1, 1}, 1.0);
-  y.d.index_put_({Slice(), 2, 2}, 1.0);
-  y.d.index_put_({Slice(), 3, 3}, 1.0);
-  y.d.index_put_({Slice(), 4, 4}, 1.0);
-  y.d.index_put_({Slice(), 5, 5}, 1.0);
  
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
   TensorDual tspan = TensorDual(torch::rand({M, 2}, torch::kFloat64).to(device), torch::zeros({M,2,N}, torch::kFloat64).to(device));
@@ -194,7 +188,7 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   //*options.EventsFcn = vdpEvents;
   options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
   options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
-  options.MaxNbrStep = 1000;
+  options.MaxNbrStep = 200;
 
 
   auto params_dual = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
