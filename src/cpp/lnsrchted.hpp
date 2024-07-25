@@ -87,7 +87,6 @@ namespace janus
                          TensorDual::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                          p.index({m2}).contiguous()});
             // Check if the new x is within bounds
-            std::cerr << "xupdt < xmin.index({m2})=" << (xupdt < xmin.index({m2})) << std::endl;
             auto m2_1_1 = (xupdt < xmin.index({m2}));
             m2_1_1=m2_1_1.dim()> 1 ? m2_1_1.all(1) : m2_1_1;   
             if (m2_1_1.eq(true_t).any().item<bool>())
@@ -159,11 +158,6 @@ namespace janus
             m2_4 = m2_4.dim()> 1 ? m2_4.all(1) : m2_4;
             if (m2_4.any().eq(true_t).any().item<bool>())
             {
-                std::cerr << "m2_4 " << m2_4 << std::endl;
-                std::cerr << "Jres=";
-                janus::print_dual(Jres);
-                std::cerr << "Jold=";
-                janus::print_dual(Jold);
                 auto rhs1 = Jres.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
                             (alam.index({m2_4}).contiguous()* 

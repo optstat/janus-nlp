@@ -51,7 +51,6 @@ namespace janus
         while ( m2.eq(true_t).any().item<bool>() && count < MAXITS)
         {
             count++;
-            std::cerr << "Iteration count = " << count << std::endl;
             //Recalculate the function and the jacobian
             auto f_copy = f.clone();
 
@@ -102,8 +101,6 @@ namespace janus
             auto pin = p.index({m2}).contiguous();
             auto stpmaxin = stpmax.index({m2}).contiguous();
             auto paramsin = params.index({m2}).contiguous();
-            std::cerr << "At count = " << count << std::endl;
-            std::cerr << "Input into lnsrch " << xoldin << std::endl;
             auto xminm2 = xmin.index({m2}).contiguous();
             auto xmaxm2 = xmax.index({m2}).contiguous();
             auto [xs, js, ps, checkupd] = lnsrchTeD(xoldin,
@@ -116,9 +113,6 @@ namespace janus
                                                    xminm2,
                                                    xmaxm2,
                                                    func);
-            std::cerr << "Output from lnsrch " << xs << std::endl;
-            std::cerr << "Error at count=" << count << " "<< js << std::endl;
-            std::cerr << "checkupd at count=" << count << " "<< checkupd << std::endl;
             auto x_copy = x.clone();
             x_copy.index_put_({m2}, xs);
             x = x_copy;

@@ -38,10 +38,6 @@ TensorDual control_function_dual(const TensorDual& u,
   auto x1 = params.index({Slice(), Slice(2,3)});
   auto x2 = params.index({Slice(), Slice(3,4)});
   //We have to solve
-  std::cerr << "u.log()=";
-  janus::print_dual(u.log());
-  std::cerr << "u.log()/u=";
-  janus::print_dual(u.log()/u);
 
   auto res =u.log()/u+u+p2*(x2*(1-x1*x1)-x1)*(1/W);
 
@@ -151,8 +147,8 @@ int main(int argc, char *argv[])
   auto res2m = newtTeD(u0, params2m, umin, umax, propagate, jac_eval);
   auto grad2 = (std::get<0>(res2p).r-std::get<0>(res2m).r)/(2*h);
   std::cerr << "grad2=" << grad2 << std::endl;
-  std::cerr << "check2=" << roots.d << std::endl;
-  //assert(torch::allclose(grad2, roots.d.index({Slice(), Slice(1,2), Slice(1,2)}), 1.0e-6, 1.0e-6));
+  std::cerr << "check2=" << roots.d.index({Slice(), Slice(0,1), Slice(1,2)}) << std::endl;
+  assert(torch::allclose(grad2, roots.d.index({Slice(), Slice(0,1), Slice(1,2)}), 1.0e-6, 1.0e-6));
 
   maxres =torch::max(params.index({Slice(), Slice(2,3)}).r, one);
   h = 1.0e-8*maxres;
@@ -164,8 +160,8 @@ int main(int argc, char *argv[])
   auto res3m = newtTeD(u0, params3m, umin, umax, propagate, jac_eval);
   auto grad3 = (std::get<0>(res3p).r-std::get<0>(res3m).r)/(2*h);
   std::cerr << "grad3=" << grad3 << std::endl;
-  std::cerr << "check2=" << roots.d << std::endl;
-  //assert(torch::allclose(grad2, roots.d.index({Slice(), Slice(1,2), Slice(1,2)}), 1.0e-6, 1.0e-6));
+  std::cerr << "check3=" << roots.d.index({Slice(), Slice(0,1), Slice(2,3)}) << std::endl;
+  assert(torch::allclose(grad3, roots.d.index({Slice(), Slice(0,1), Slice(2,3)}), 1.0e-6, 1.0e-6));
 
   maxres =torch::max(params.index({Slice(), Slice(3,4)}).r, one);
   h = 1.0e-8*maxres;
@@ -176,9 +172,9 @@ int main(int argc, char *argv[])
   params4m.r.index_put_({Slice(), Slice(3,4)}, params1m.index({Slice(), Slice(3,4)}).r-h); 
   auto res4m = newtTeD(u0, params4m, umin, umax, propagate, jac_eval);
   auto grad4 = (std::get<0>(res4p).r-std::get<0>(res4m).r)/(2*h);
-  std::cerr << "grad3=" << grad4 << std::endl;
-  std::cerr << "check2=" << roots.d << std::endl;
-  //assert(torch::allclose(grad2, roots.d.index({Slice(), Slice(1,2), Slice(1,2)}), 1.0e-6, 1.0e-6));
+  std::cerr << "grad4=" << grad4 << std::endl;
+  std::cerr << "check4=" << roots.d.index({Slice(), Slice(0,1), Slice(3,4)}) << std::endl;
+  assert(torch::allclose(grad4, roots.d.index({Slice(), Slice(0,1), Slice(3,4)}), 1.0e-6, 1.0e-6));
 
   return 0;
 }

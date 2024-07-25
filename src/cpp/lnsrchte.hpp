@@ -134,11 +134,6 @@ namespace janus
             auto m2_4 = m2 & (alam != 1.0).all(1);
             if (m2_4.any().eq(true_t).any().item<bool>())
             {
-                std::cerr << "m2_4 " << m2_4 << std::endl;
-                std::cerr << "Jres=";
-                janus::print_tensor(Jres);
-                std::cerr << "Jold=";
-                janus::print_tensor(Jold);
                 auto rhs1 = Jres.index({m2_4}).contiguous() -
                             Jold.index({m2_4}).contiguous() -
                             torch::einsum("mi, mi->m", {alam.index({m2_4}).contiguous(), 
@@ -183,7 +178,6 @@ namespace janus
                         disc.index_put_({disc < -1.0e+10}, -1.0e+10);
                     }
 
-                    std::cerr << "disc " << disc << std::endl;
 
                     auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
@@ -212,15 +206,6 @@ namespace janus
                     }
                     torch::Tensor one = torch::ones_like(tmplam);
                     torch::Tensor zeros = torch::zeros_like(tmplam);
-                    //Cap the discriminator so it is never above a large number
-                    if ( torch::isinf(disc).any().item<bool>() )
-                    {
-                        disc.index_put_({torch::isinf(disc)}, 1.0e+10*one);
-                    }
-                    if ( torch::isnan(disc).any().item<bool>() )
-                    {
-                        disc.index_put_({torch::isnan(disc)}, zeros);
-                    }
                     
                     if ((tmplam > 1.0e+10).any().item<bool>())
                     {
@@ -237,6 +222,7 @@ namespace janus
                     {
                       tmplam.index_put_({m2_4_2_4}, 0.5 * alam.index({m2_4_2_4}).contiguous());
                     }
+                    
 
                 }
             }
