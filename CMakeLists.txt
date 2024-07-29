@@ -9,6 +9,9 @@ set(Torch_DIR "/home/panos/Applications/libtorch/share/cmake/Torch")
 
 # Find Python3 and NumPy
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+# Find Pybind11
+find_package(pybind11 CONFIG REQUIRED)
+
 
 include_directories(${Python3_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR}/src/cpp)
@@ -34,7 +37,15 @@ include_directories(${TORCH_INCLUDE_DIRS})
 
 # Add pthread
 find_package(Threads REQUIRED)
-add_library(janus_nlp SHARED src/cpp/bindings.cpp)
+
+# Add the shared library
+add_library(janus_nlp MODULE src/cpp/bindings.cpp)
+target_link_libraries(janus_nlp PRIVATE pybind11::module ${TORCH_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+
+# Ensure the extension is named correctly for Python import
+set_target_properties(janus_nlp PROPERTIES PREFIX "" SUFFIX "${PYTHON_MODULE_EXTENSION}")
+
+
 
 # Define the source directory for headers
 set(HEADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/src/cpp")
