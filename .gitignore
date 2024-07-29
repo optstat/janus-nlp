@@ -32,4 +32,6 @@
 *.app
 
 /build
+/dist
 /.vscode
+/janus_nlp

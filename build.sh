@@ -13,6 +13,7 @@ pip install setuptools wheel numpy scipy torch
 
 # Run the setup script
 python setup.py build_ext --inplace
+python setup.py install
 
 # Deactivate the virtual environment
 deactivate
