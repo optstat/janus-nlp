@@ -9,7 +9,7 @@ fi
 source build/venv/bin/activate
 
 # Install necessary packages
-pip install setuptools wheel numpy scipy torch smac4
+pip3 install setuptools wheel numpy scipy torch smac
 
 
 # Download and extract LibTorch
@@ -29,8 +29,11 @@ export Torch_DIR=$(pwd)/build/libtorch/share/cmake/Torch
 export Torch_LIBRARY_DIR=$(pwd)/build/libtorch/lib
 export Torch_INCLUDE_DIR=$(pwd)/build/libtorch/include
 
+# Clean previous builds
+rm -rf build/lib
+
 # Run the setup script
-python setup.py build_ext --inplace
+python3 setup.py build_ext --inplace
 pip install .
 
 

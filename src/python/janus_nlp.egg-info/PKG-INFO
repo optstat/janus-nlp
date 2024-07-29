@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: janus_nlp
+Version: 0.1
+Summary: A PyTorch extension with multiple C++ bindings
+Author: Panos Lambrianides
+Author-email: panos@twoisone.ai
+License-File: LICENSE
+
+NLP solvers based necessary conditions for optimality using dual numbers
