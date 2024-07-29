@@ -9,6 +9,8 @@
 #include <janus/janus_util.hpp>
 namespace janus
 {
+    namespace nlp 
+    {
 
     std::tuple<TensorDual, torch::Tensor> newtTeD(TensorDual &x,
                                                   const TensorDual &params,
@@ -175,16 +177,22 @@ namespace janus
                 if ( (test.index({m2}) < TOLX).any().item<bool>() )
                 {
                     std::cerr << "Small relative changes in x detected" << std::endl;
+                    //No need to continue for these samples
+                    m2.index_put_({m2.clone()}, false);    
                 }
                 auto m2_copy = m2.clone();
-                m2_copy.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                if (m2_copy.index({m2}).eq(true_t).any().item<bool>())
+                {
+                    m2_copy.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                }
+                
                 m2 = m2_copy;
             }
         }
         
         return std::make_tuple(x, check);
     }
-
+    } // namespace nlp
     
 } // namespace janus
 

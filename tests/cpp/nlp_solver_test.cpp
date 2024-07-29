@@ -137,7 +137,7 @@ TEST(LineSearchTest, Cubic)
     // Search direction (negative gradient)
     torch::Tensor p = -g;
     // Perform line search
-    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, xmin, xmax, cubic);
+    auto [x_new, J_new, p_new, check_new] = janus::nlp::lnsrchTe(x0, f0, J0, g, p, stpmax, params, xmin, xmax, cubic);
 
     // Print the results
     //std::cerr << (J_new < J0) << std::endl;
@@ -176,7 +176,7 @@ TEST(LineSearchTest, 2DFunction) {
     auto p = janus::solveluv(LU, P, -f0);
 
     // Perform line search
-    auto [x_new, J_new, g_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params,xmin, xmax, func2d);
+    auto [x_new, J_new, g_new, check_new] = janus::nlp::lnsrchTe(x0, f0, J0, g, p, stpmax, params,xmin, xmax, func2d);
 
     // Print the results
     /*std::cout << "Initial position: " << x0 << std::endl;
@@ -225,7 +225,7 @@ TEST(LineSearchDualTest, Cubic)
     // Search direction (negative gradient)
     TensorDual p = -g;
     // Perform line search
-    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTeD(x0, 
+    auto [x_new, J_new, p_new, check_new] = janus::nlp::lnsrchTeD(x0, 
                                                              f0, 
                                                              J0, 
                                                              g, 
@@ -308,10 +308,10 @@ TEST(NewtGlobalTest, 2DFunction) {
   torch::Tensor xmax = torch::ones({M, 2}, torch::kDouble)*1000;
 
   torch::Tensor params = torch::zeros({M, 2}, torch::dtype(torch::kFloat64));
-  auto res = newtTe(x0, params, xmin, xmax, func, jac);
+  auto res = janus::nlp::newtTe(x0, params, xmin, xmax, func, jac);
   auto roots = std::get<0>(res);
   auto check = std::get<1>(res);
-  auto errors = Jfunc(func(roots, params));
+  auto errors = janus::nlp::Jfunc(func(roots, params));
   auto sols = torch::zeros_like(errors);
   
   //std::cout << "Root=" << roots << std::endl;
@@ -333,7 +333,7 @@ TEST(NewtGlobalDualTest, 2DFunctionDual) {
 
   TensorDual params = TensorDual(torch::zeros({M, 2}, torch::dtype(torch::kFloat64)),
                                     torch::zeros({M, 2, 2}, torch::dtype(torch::kFloat64))); 
-  auto res = newtTeD(x0, params, xmin, xmax, func_dual, jac_dual);
+  auto res = janus::nlp::newtTeD(x0, params, xmin, xmax, func_dual, jac_dual);
   auto roots = std::get<0>(res);
   auto check = std::get<1>(res);
   auto errors = J(func_dual(roots, params));

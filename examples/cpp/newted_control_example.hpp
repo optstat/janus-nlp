@@ -1,16 +1,26 @@
+#ifndef NEWTED_CONTROL_EXAMPLE_HPP
+#define NEWTED_CONTROL_EXAMPLE_HPP
 /**
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control only using the dual number approac
  */
+#include <torch/torch.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 #include <janus/janus_ode_common.hpp>
 #include "../../src/cpp/lnsrchted.hpp"
 #include "../../src/cpp/newtted.hpp"
-#include "matplotlibcpp.h"
+
+
+namespace janus {
+namespace nlp {
+namespace examples {
+  namespace vdpc {
 
 using namespace janus;
-namespace plt = matplotlibcpp;
 
 int M = 1; 
 /**
@@ -82,7 +92,7 @@ TensorMatDual jac_eval(const TensorDual& u, const TensorDual& params) {
 
 //Create a main method for testing
 
-int main(int argc, char *argv[])
+int solve()
 {
   void (*pt)(const torch::Tensor&) = janus::print_tensor;
   void (*pd)(const TensorDual&) = janus::print_dual;
@@ -178,7 +188,10 @@ int main(int argc, char *argv[])
 
   return 0;
 }
+}
+}
+}
+} // namespace vdp
 
 
-
-
+#endif

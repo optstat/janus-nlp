@@ -7,6 +7,7 @@
 #include <janus/janus_util.hpp>
 namespace janus
 {
+    namespace nlp {
 
     torch::Tensor Jfunc(const torch::Tensor &F)
     {
@@ -237,6 +238,7 @@ namespace janus
             }
         }
         return std::make_tuple(x, Jres, p, check);
+    }
     }
 
 } // namespace janus

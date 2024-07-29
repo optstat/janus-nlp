@@ -9,7 +9,7 @@
 #include <janus/janus_util.hpp>
 namespace janus
 {
-
+  namespace nlp {
     std::tuple<torch::Tensor, torch::Tensor> newtTe(torch::Tensor &x,
                                                   const torch::Tensor &params,
                                                   const torch::Tensor &xmin,
@@ -144,16 +144,20 @@ namespace janus
                 if ( (test.index({m2}) < TOLX).any().item<bool>() )
                 {
                     std::cerr << "Small relative changes in x detected" << std::endl;
+                    m2.index_put_({m2.clone()}, false);
                 }
 
-                m2.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                if (m2.eq(true_t).any().item<bool>())
+                {
+                  m2.index_put_({m2.clone()}, ~(test.index({m2}) < TOLX));
+                }
             }
         }
         
         return std::make_tuple(x, check);
     }
 
-    
+  } // namespace nlp
 } // namespace janus
 
 #endif // newt_HPP_INCLUDED

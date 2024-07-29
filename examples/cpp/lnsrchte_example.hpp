@@ -1,12 +1,18 @@
+#ifndef lnsrchte_HPP_INCLUDED
+#define lnsrchte_HPP_INCLUDED
 #include <torch/torch.h>
 #include <iostream>
 #include <chrono>
 #include <functional>
-#include "../../src/cpp/lnsrchTe.hpp"
+#include "../../src/cpp/lnsrchte.hpp"
 #include <janus/lute.hpp>
 #include <janus/janus_util.hpp>
 using Slice = torch::indexing::Slice;
-
+namespace janus {
+    namespace nlp {
+        namespace examples {
+            
+    
 /**
  * Function to reduce the vector function to a scalar function
  * returns a tensor of dimension [M]
@@ -110,8 +116,19 @@ void test_quadratic()
 
     // Search direction (negative gradient)
     torch::Tensor p = -g;
+    auto xmin = x0-10000;
+    auto xmax = x0+10000;
     // Perform line search
-    auto [x_new, J_new, p_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, quadratic);
+    auto [x_new, J_new, p_new, check_new] = janus::nlp::lnsrchTe(x0, 
+                                                            f0, 
+                                                            J0, 
+                                                            g, 
+                                                            p, 
+                                                            stpmax, 
+                                                            params, 
+                                                            xmin,
+                                                            xmax,
+                                                            quadratic);
 
     // Print the results
     std::cout << "Initial position: " << x0 << std::endl;
@@ -147,8 +164,19 @@ void test_cubic()
 
     // Search direction (negative gradient)
     torch::Tensor p = -g;
+    auto xmin = x0-10000;
+    auto xmax = x0+10000;
     // Perform line search
-    auto [x_new, J_new, g_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, cubic);
+    auto [x_new, J_new, g_new, check_new] = janus::nlp::lnsrchTe(x0, 
+                                                            f0, 
+                                                            J0, 
+                                                            g, 
+                                                            p, 
+                                                            stpmax, 
+                                                            params,
+                                                            xmin,
+                                                            xmax, 
+                                                            cubic);
 
     // Print the results
     std::cout << "Initial position: " << x0 << std::endl;
@@ -184,26 +212,36 @@ void test_2d()
     torch::Tensor jac = jac2d(x0, params);
     torch::Tensor g = torch::einsum("mij, mi->mj", {jac, f0});
     //Use LU decomposition to calculate the search direction
-    auto [LU, P] = janus::lu(jac);
+    auto [LU, P] = janus::LUTe(jac);
     auto p = janus::solveluv(LU, P, -f0);
+    auto xmin = x0-10000;
+    auto xmax = x0+10000;
 
     // Perform line search
-    auto [x_new, J_new, g_new, check_new] = janus::lnsrchTe(x0, f0, J0, g, p, stpmax, params, func2d);
+    auto [x_new, J_new, g_new, check_new] = janus::nlp::lnsrchTe(x0, 
+                                                            f0, 
+                                                            J0, 
+                                                            g, 
+                                                            p, 
+                                                            stpmax, 
+                                                            params, 
+                                                            xmin, 
+                                                            xmax,
+                                                            func2d);
 
     // Print the results
     std::cout << "Initial position: " << x0 << std::endl;
     std::cout << "Initial gradient: " << g << std::endl;
     std::cout << "Initial function value: " << f0 << std::endl;
-    std::cout << "Initial error: " << janus::Jfunc(func2d(x0, params)) << std::endl;
+    std::cout << "Initial error: " << janus::nlp::Jfunc(func2d(x0, params)) << std::endl;
     std::cout << "New position: " << x_new << std::endl;
     std::cout << "New gradient: " << g_new << std::endl;
     std::cout << "Check: " << check_new << std::endl;
-    std::cout << "Solution error" << janus::Jfunc(func2d(x_new, params)) << std::endl;
+    std::cout << "Solution error" << janus::nlp::Jfunc(func2d(x_new, params)) << std::endl;
 
 }
 
-int main(int argc, char const *argv[])
-{
-    test_2d();
-    return 0;
+    }
 }
+}
+#endif

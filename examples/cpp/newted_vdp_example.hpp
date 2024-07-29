@@ -1,7 +1,13 @@
+#ifndef NEWTED_VDP_EXAMPLE_HPP
+#define NEWTED_VDP_EXAMPLE_HPP
 /**
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control for minimum time
  */
+#include <torch/torch.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+#include <torch/autograd.h>
 #include <janus/radauted.hpp>
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
@@ -10,11 +16,13 @@
 #include "../../src/cpp/newtted.hpp"
 #include "../../src/cpp/newtte.hpp"
 #include "../../src/cpp/lnsrchte.hpp"
-#include "matplotlibcpp.h"
 
 using namespace janus;
-namespace plt = matplotlibcpp;
+namespace py = pybind11;
 
+namespace janus {
+namespace nlp {
+namespace examples {
 
 /**
  * Radau example using the Van der Pol oscillator 
@@ -24,114 +32,143 @@ namespace plt = matplotlibcpp;
 using Slice = torch::indexing::Slice;
 //Global parameters for simplicity
 double W = 1.0;
+double alpha = 1000.0;
 double x1f = 1.0;
-double x2f = -1.25;
+double x2f = -1.0/alpha;
 double x10 = 2.0;
-double x20 = 0.0;
-double ft = 1.0;
-
+double x20 = 0.0/alpha;
+int MaxNbrStep = 100;
 //Guesses for the initial values of the Lagrange multipliers
-double p10 = -10.0;
-double p20 = 10.0;
+/**
+ * In this problem setup the Hamiltonian has form
+ * H' = p1'*x2' + p2'*u*((1-x1*x1)*x2'-x1/alpha)+W*u*u/2+1
+ * Where alpha is a scaling factor that scales the original p1, p2 and x2
+ * in the  original Hamiltonian
+ * H = p1*x2 + p2*u*((1-x1*x1)*x2-x1)+W*u*u/2+1
+ * where p1 = p1'/alpha
+ *       p2 = p2'/alpha
+ *       x2 = x2'*alpha
+ *       x1 = x1'
+ */
 
+
+torch::Tensor slog(const torch::Tensor& x) {
+    auto sign_x = torch::sign(x);
+    auto log_abs_x = torch::log(torch::abs(x)+1);
+    return sign_x * log_abs_x;
+}
+
+torch::Tensor sloginv(const torch::Tensor& x) {
+    auto sign_x = torch::sign(x);
+    auto exp_abs_x = torch::exp(torch::abs(x)-1);
+    return sign_x * exp_abs_x;
+}
+
+
+
+
+class VdpOptimalControlFunction : public torch::autograd::Function<VdpOptimalControlFunction> {
+public:
+    static TensorDual solve(const TensorDual& params, 
+                            const TensorDual& umin,
+                            const TensorDual& umax) {
+      auto p1 = params.index({Slice(), Slice(0,1)});
+      auto p2 = params.index({Slice(), Slice(1,2)});
+      auto x1 = params.index({Slice(), Slice(2,3)});
+      auto x2 = params.index({Slice(), Slice(3,4)});
+      //We have to solve
+
+      auto res = -p2*((1-x1*x1)*x2-x1/alpha)/W;
+      //Clip the result to the bounds
+      auto m = res < umin;
+      res.index_put_({m}, umin.index({m}));
+
+      return res;
+
+    }
+    // Forward pass
+    static torch::Tensor forward(torch::autograd::AutogradContext *ctx, torch::Tensor y) {
+        //Use the dual version of the Line Search algorithm to calculate the optimal control
+        //Refer to the newted_control_example.cpp for how to do this in isolation
+        int M = y.size(0);
+        int N = y.size(1);
+        int D = y.size(1)+1; //The dual part is the combined state space plus final time
+        auto p1 = y.index({Slice(), 0});
+        auto p2 = y.index({Slice(), 1});
+        auto x1 = y.index({Slice(), 2});
+        auto x2 = y.index({Slice(), 3});
+        //Add the combined state space as parameters
+        TensorDual params = TensorDual(torch::zeros({M, N}, torch::dtype(torch::kFloat64)),
+                                       torch::zeros({M, N, D}, torch::dtype(torch::kFloat64)));
+        params.r.index_put_({Slice(), Slice(0,1)}, p1);
+        params.r.index_put_({Slice(), Slice(1,2)}, p2);
+        params.r.index_put_({Slice(), Slice(2,3)}, x1);
+        params.r.index_put_({Slice(), Slice(3,4)}, x2);
+        //Set the sensitivities
+        params.d.index_put_({Slice(), Slice(0,1), Slice(0,1)}, 1.0);
+        params.d.index_put_({Slice(), Slice(1,2), Slice(1,2)}, 1.0);
+        params.d.index_put_({Slice(), Slice(2,3), Slice(2,3)}, 1.0);
+        params.d.index_put_({Slice(), Slice(3,4), Slice(3,4)}, 1.0);
+
+        TensorDual umin = TensorDual(0.01*torch::ones({M, 1}, torch::dtype(torch::kFloat64)),
+                                     torch::zeros({M, 1, D}, torch::dtype(torch::kFloat64)));
+
+        TensorDual umax = TensorDual(1000*torch::ones({M, 1}, torch::dtype(torch::kFloat64)),
+                                     torch::zeros({M, 1, D}, torch::dtype(torch::kFloat64)));
+        //Need to bind the method so we can pass it in as callback
+        //We should add logic here to check if the solution is valid 
+        //For this example assume the control is correct
+        //Save the sensititivies in the context
+        //Clone to ensure the values are not modified in any downstream manipulation
+      
+        TensorDual res = solve(params, umin, umax);
+        //This is the gradient wrt the parameters [p1, p2, tf]
+        auto grads = torch::zeros({M, N}, torch::dtype(torch::kFloat64));
+        grads.index_put_({Slice(), Slice(0.3)}, res.d.index({Slice(), 0, Slice(0,3)}));
+
+        ctx->save_for_backward({grads.clone()});
+        return res.r;
+    }
+
+    // Backward pass
+    static torch::autograd::variable_list backward(torch::autograd::AutogradContext *ctx, torch::autograd::variable_list grad_output) {
+        // Retrieve the saved dual gradient
+        torch::Tensor sens = ctx->get_saved_variables()[0];
+    
+        return {sens};
+    }
+};
 
 
  
 
-TensorDual control_function_dual(const TensorDual& u,
-                                 const TensorDual& params) 
-{
-  auto x1 = params.index({Slice(), Slice(0,1)});
-  auto x2 = params.index({Slice(), Slice(1,2)});
-  auto p1 = params.index({Slice(), Slice(2,3)});
-  auto p2 = params.index({Slice(), Slice(3,4)});
-  //We have to solve
-  auto res =u.log()/u+u+p2*(x2*(1-x1*x1)-x1)*(1/W);
-
-  return res; //Return the through copy elision
-}
 
 
-TensorMatDual control_grad_function_dual(const TensorDual& u,
-                                         const TensorDual& params) 
-{
-  auto x1 = params.index({Slice(), Slice(0,1)});
-  auto x2 = params.index({Slice(), Slice(1,2)});
-  auto p1 = params.index({Slice(), Slice(2,3)});
-  auto p2 = params.index({Slice(), Slice(3,4)});
-  //We have to solve
-  auto res = -u.log()/(u*u)+(u*u).reciprocal()+1;
-  auto jac = res.unsqueeze(2);
-
-  return jac; //Return the through copy elision
-} 
-
-
-
-
-
-TensorDual control_dual(const TensorDual& u_guess,
-                        const TensorDual& x1, 
-                        const TensorDual& x2,
-                        const TensorDual& p1,
-                        const TensorDual& p2) 
-{
-  //We have to solve
-  
-  TensorDual params =TensorDual::cat({p1, p2, x1, x2});
-  TensorDual umin = TensorDual::zeros_like(x1);
-  TensorDual umax = TensorDual::zeros_like(x1);  
-  umin.index_put_({Slice(), Slice(0,1)}, 0.001);
-  umax.index_put_({Slice(), Slice(0,1)}, 100.0);
-  TensorDual u = u_guess.clone();
-  
-
-  auto res= newtTeD(u, params, umin, umax, control_function_dual, control_grad_function_dual);
-  return std::get<0>(res);
-}
-
-
-
-
-
-
-
-
-TensorDual hamiltonian_dual(const TensorDual& x, 
-                            const TensorDual& p, 
-                            double W) {
-  TensorDual p1 = p.index({Slice(), 0});  
-  TensorDual p2 = p.index({Slice(), 1});  
-  TensorDual x1 = x.index({Slice(), 0});  
-  TensorDual x2 = x.index({Slice(), 1});
-  TensorDual u_guess = TensorDual::ones_like(x1);
-  auto u = control_dual(u_guess, x1, x2, p1, p2);  
-  auto H = p1*x2+p2*u*(1-x1*x1)*x2+W*(u.log().square()/2+u*u/2)+1; //Return the through copy elision
-  return H; //Return the through copy elision
-}
-
-
-torch::Tensor hamiltonian(const torch::Tensor& x, 
-                          const torch::Tensor& p, 
+torch::Tensor hamiltonian(const torch::Tensor& x,
+                          const torch::Tensor& p,  
                           double W) {
-  //Wrap the call to the dual number version
-  int M = x.size(0);
-  int N = x.size(1);
-  torch::Tensor dummy = torch::zeros({M, N, 1}, torch::kFloat64);
-  auto x_dual = TensorDual(x.clone(), dummy.clone());
-  auto p_dual = TensorDual(p.clone(), dummy.clone());
-  auto H_dual = hamiltonian_dual(x_dual, p_dual, W);
-  return H_dual.r;
-  
+    auto y = torch::cat({p, x}, 1);
+    auto p1= y.index({Slice(), Slice(0,1)});
+    auto p2= y.index({Slice(), Slice(1,2)});
+    auto x1= y.index({Slice(), Slice(2,3)});
+    auto x2= y.index({Slice(), Slice(3,4)});
+    auto u = VdpOptimalControlFunction::apply(y);
+    auto H = p1*x2+p2*((1-x1*x1)*x2-x1/alpha)+W*u*u/2+1.0;
+    return H;
 }
+
+
+
 
 
 
 /**
  * Dynamics calculated according the hamiltonian method
  */
-TensorDual vdpdyns_ham(const TensorDual& t, const TensorDual& y, const TensorDual& params) {
-  auto dyns=  <double>(y, W, hamiltonian);
+TensorDual vdpdyns_ham(const TensorDual& t, 
+                       const TensorDual& y, 
+                       const TensorDual& params) {
+  auto dyns=  evalDynsDual<double>(y, W, hamiltonian);
   //std::cerr << "dyns=";
   //janus::print_dual(dyns);
   return dyns;
@@ -147,20 +184,6 @@ TensorMatDual jac_ham(const TensorDual& t,
   return jac;
 }
 
-
-
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> vdpEvents(torch::Tensor& t, 
-                                                                  torch::Tensor& y, 
-                                                                  torch::Tensor& params) {
-    int M = y.size(0);
-    //return empty tensors
-    torch::Tensor E = y.index({Slice(), 0});
-    torch::Tensor Stop = torch::tensor({M, false}, torch::TensorOptions().dtype(torch::kBool));
-    auto mask = (y.index({Slice(), 1}) == 0.0);
-    Stop.index_put_({mask}, true);
-    torch::Tensor Slope = torch::tensor({M, 1}, torch::TensorOptions().dtype(torch::kFloat64));
-    return std::make_tuple(t, E, Stop, Slope);
-}
 
 
 /**
@@ -207,7 +230,7 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   //to ensure that reasonable execution times
   options.RelTol = torch::tensor({1e-3}, torch::kFloat64).to(device);
   options.AbsTol = torch::tensor({1e-6}, torch::kFloat64).to(device);
-  options.MaxNbrStep = 200; 
+  options.MaxNbrStep = MaxNbrStep; 
 
   //Create l values this is a C++ requirement for non constant references
   auto tspanc = tspan.clone();
@@ -231,13 +254,13 @@ torch::Tensor propagate(const torch::Tensor& x, const torch::Tensor& params)
   //Now calculate the boundary conditionsx
   auto x1delta = r.y.index({Slice(), Slice(2,3)})-x1f;
   auto x2delta = r.y.index({Slice(), Slice(3,4)})-x2f;
-  auto Hf = hamiltonian_dual(xf, pf, W);
+  auto Hf = hamiltonian(xf.r, pf.r, W);
   torch::Tensor res = x*0.0;
   //The hamiltonian is zero at the terminal time 
   //because this is a minimum time problem
   res.index_put_({Slice(), Slice(0,1)}, x1delta.r);
   res.index_put_({Slice(), Slice(1,2)}, x2delta.r);
-  res.index_put_({Slice(), Slice(2,3)}, Hf.r);
+  res.index_put_({Slice(), Slice(2,3)}, Hf);
   std::cerr << "propagation result=";
   janus::print_tensor(res);
 
@@ -272,7 +295,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   y.d.index_put_({Slice(), 3, 3}, 1.0);
  
   //Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-  TensorDual tspan = TensorDual(torch::rand({M, 2}, x.options()), torch::zeros({M,2,N}, x.options()));
+  TensorDual tspan = TensorDual(torch::rand({M, 2}, x.options()), torch::zeros({M,2,D}, x.options()));
   tspan.r.index_put_({Slice(), Slice(0,1)}, 0.0);
   //tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
   tspan.r.index_put_({Slice(), Slice(1,2)}, x.index({Slice(), Slice(2,3)}));
@@ -283,7 +306,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   options.RelTol = torch::tensor({1e-3}, x.options());
   options.AbsTol = torch::tensor({1e-6}, x.options());
   
-  options.MaxNbrStep = 200;
+  options.MaxNbrStep = MaxNbrStep;
   auto tspanc = tspan.clone();
   auto yc = y.clone();
   auto paramsc = TensorDual(params.clone(), torch::zeros({M,params.size(1),N}));
@@ -315,7 +338,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   auto x2delta = r.y.index({Slice(), Slice(3,4)})-x2f;
   std::cerr << "x2delta=";
   janus::print_dual(x2delta);
-  auto Hf = hamiltonian_dual(xf, pf, W);
+  auto Hf = hamiltonian(xf.r, pf.r, W);
   jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(),0,0}));
   jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(),0,1}));
   jacVal.index_put_({Slice(), 0, 2}, x1delta.d.index({Slice(),0,N-1}));
@@ -334,7 +357,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
  * sensitivity and global optimization techniques to solve the problem
  */
 
-int main(int argc, char *argv[])
+std::tuple<torch::Tensor, torch::Tensor> solve(double p10, double p20, double ft)
 {
   void (*pt)(const torch::Tensor&) = janus::print_tensor;
   void (*pd)(const TensorDual&) = janus::print_dual;
@@ -380,9 +403,12 @@ int main(int argc, char *argv[])
   //Now propagate the final solution to get the final sensitivities
 
 
-  return 0;
+  return std::make_tuple(roots, errors);
+}
+}
 }
 
+} // namespace newted_example
 
 
-
+#endif

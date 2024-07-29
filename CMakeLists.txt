@@ -1,13 +1,19 @@
 cmake_minimum_required(VERSION 3.10)
-project(JanusNLPProject)
+project(janus_nlp)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS 1 CACHE INTERNAL "Suppress developer warnings")
+set(Torch_DIR "/home/panos/Applications/libtorch/share/cmake/Torch")
 
 # Find Python3 and NumPy
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+
+include_directories(${Python3_INCLUDE_DIRS})
+include_directories(${CMAKE_SOURCE_DIR}/src/cpp)
+include_directories(${CMAKE_SOURCE_DIR}/examples/cpp)
+include_directories(${TORCH_INCLUDE_DIRS})  # Include Torch headers
 
 
 # Set debug flags
@@ -22,27 +28,29 @@ set(CMAKE_EXE_LINKER_FLAGS_PROFILE "-pg")
 
 
 
-enable_testing()
 # Find libtorch
 find_package(Torch REQUIRED)
+include_directories(${TORCH_INCLUDE_DIRS})
 
 # Add pthread
 find_package(Threads REQUIRED)
+add_library(janus_nlp SHARED src/cpp/bindings.cpp)
 
 # Define the source directory for headers
 set(HEADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/src/cpp")
 set(HEADER_DEST_DIR "/usr/local/include/janus")
+# Add an option to control the installation of headers
+option(INSTALL_HEADERS "Install header files to ${HEADER_DEST_DIR}" OFF)
 
-# Custom command to copy headers
-add_custom_target(copy_headers ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${HEADER_DEST_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy_directory ${HEADER_SOURCE_DIR} ${HEADER_DEST_DIR}
-    COMMENT "Copying header files to ${HEADER_DEST_DIR}"
-)
+        
 
 # Add subdirectory for tests
 add_subdirectory(tests/cpp)
-add_subdirectory(examples/cpp)
+
 
 # Install rules for header files
 install(DIRECTORY ${HEADER_SOURCE_DIR}/ DESTINATION include/janus FILES_MATCHING PATTERN "*.hpp")
+# Conditionally install headers during make install
+if(INSTALL_HEADERS)
+    install(DIRECTORY ${HEADER_SOURCE_DIR}/ DESTINATION ${HEADER_DEST_DIR} FILES_MATCHING PATTERN "*.hpp")
+endif()

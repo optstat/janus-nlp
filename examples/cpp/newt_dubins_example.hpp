@@ -1,18 +1,23 @@
+#ifndef NEWT_DUBINS_EXAMPLE_HPP
+#define NEWT_DUBINS_EXAMPLE_HPP
 /**
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control for minimum time
  */
+#include <torch/torch.h>
 #include <janus/radauted.hpp>
 #include <janus/tensordual.hpp>
 #include <janus/janus_util.hpp>
 #include <janus/janus_ode_common.hpp>
 #include "../../src/cpp/lnsrchte.hpp"
 #include "../../src/cpp/newtte.hpp"
-#include "matplotlibcpp.h"
+
 
 using namespace janus;
-namespace plt = matplotlibcpp;
-
+namespace janus {
+  namespace nlp {
+    namespace examples {
+      namespace dubins {
 int M = 2;
 /**
  * Radau example using the Van der Pol oscillator 
@@ -339,7 +344,7 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
 
 //Create a main method for testing
 
-int main(int argc, char *argv[])
+int solve()
 {
   void (*pt)(const torch::Tensor&) = janus::print_tensor;
   void (*pd)(const TensorDual&) = janus::print_dual;
@@ -382,7 +387,10 @@ int main(int argc, char *argv[])
 
   return 0;
 }
+    }
+  }
+  }
+} // namespace dubins
 
 
-
-
+#endif

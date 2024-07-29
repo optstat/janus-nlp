@@ -10,6 +10,8 @@
 
 namespace janus
 {
+    namespace nlp 
+    {
 
     TensorDual Jfunc(const TensorDual &F)
     {
@@ -199,14 +201,17 @@ namespace janus
                                              3.0 * a.index({m2_4_2}).contiguous() *
                                              slope.index({m2_4_2}).contiguous());
                     disc = disc_copy;
-                    auto m2_4_2_1 = m2_4_2 & (disc < 0).all(1);
+                    auto mdisc = disc < 0.0;
+                    mdisc = mdisc.dim()> 1 ? mdisc.all(1) : mdisc;
+
+                    auto m2_4_2_1 = m2_4_2 & mdisc;
                     if (m2_4_2_1.eq(true_t).any().item<bool>())
                     {
                       auto tmplam_copy = tmplam.clone();
                       tmplam_copy.index_put_({m2_4_2_1}, 0.5 * alam.index({m2_4_2_1}).contiguous());
                       tmplam = tmplam_copy;
                     }
-                    auto mdisc = disc >= 0.0;
+                    mdisc = disc >= 0.0;
                     mdisc = mdisc.dim()> 1 ? mdisc.all(1) : mdisc;
                     auto mb = b <= 0.0; 
                     mb = mb.dim()> 1 ? mb.all(1) : mb;
@@ -268,9 +273,9 @@ namespace janus
                     }
 
 
-
-                    auto m2_4_2_4 = m2_4_2 & 
-                                    (tmplam > 0.5 * alam).all(1);
+                    auto tmplamm = tmplam > 0.5 * alam;
+                    tmplamm = tmplamm.dim()> 1 ? tmplamm.all(1) : tmplamm;
+                    auto m2_4_2_4 = m2_4_2 & tmplamm;
                     if (m2_4_2_4.eq(true_t).any().item<bool>())
                     {
                       auto tmplam_copy = tmplam.clone();
@@ -297,7 +302,8 @@ namespace janus
             }
         }
         return std::make_tuple(x, Jres, p, check);
-    }
+    } 
+    } // namespace nlp
 
 } // namespace janus
 #endif // LNSEARCH_HPP_INCLUDED
