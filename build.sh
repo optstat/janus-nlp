@@ -9,11 +9,30 @@ fi
 source build/venv/bin/activate
 
 # Install necessary packages
-pip install setuptools wheel numpy scipy torch
+pip install setuptools wheel numpy scipy torch smac4
+
+
+# Download and extract LibTorch
+LIBTORCH_URL="https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-latest.zip"
+LIBTORCH_ZIP="build/libtorch.zip"
+LIBTORCH_DIR="build/libtorch"
+
+if [ ! -d "$LIBTORCH_DIR" ]; then
+    echo "Downloading LibTorch..."
+    wget $LIBTORCH_URL -O $LIBTORCH_ZIP
+    echo "Extracting LibTorch..."
+    unzip $LIBTORCH_ZIP -d build
+fi
+
+# Set environment variables for CMake
+export Torch_DIR=$(pwd)/build/libtorch/share/cmake/Torch
+export Torch_LIBRARY_DIR=$(pwd)/build/libtorch/lib
+export Torch_INCLUDE_DIR=$(pwd)/build/libtorch/include
 
 # Run the setup script
 python setup.py build_ext --inplace
-python setup.py install
+pip install .
+
 
 # Deactivate the virtual environment
 deactivate
