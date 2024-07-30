@@ -5,6 +5,7 @@
 #include "newtted.hpp"
 #include "../../examples/cpp/lnsrchte_example.hpp"
 #include "../../examples/cpp/newted_control_example.hpp"
+#include "../../examples/cpp/newted_vdp_example.hpp"
 
 namespace py = pybind11;
 
@@ -16,5 +17,5 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("newtTe", &janus::nlp::newtTe, "Global Newton method for BVP");
     m.def("newtTeD", &janus::nlp::newtTeD, "Global Newton method for BVP using dual tensors");
     m.def("test_2d", &janus::nlp::examples::test_2d, "Test 2D function");
-    m.def("vdpc_solve", &janus::nlp::examples::vdpc::solve, "Control function for the VDPC example");
+    m.def("vdp_solve", &janus::nlp::examples::vdp::solve, "Control function for the VDPC example");
 }

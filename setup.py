@@ -1,57 +1,78 @@
-from setuptools import setup, Extension, find_packages
-from setuptools.command.build_ext import build_ext
-import subprocess
+
 import os
-import sys
+import torch
+import glob
+
+from setuptools import find_packages, setup
+
+from torch.utils.cpp_extension import (
+    CppExtension,
+    CUDAExtension,
+    BuildExtension,
+    CUDA_HOME,
+)
+
+library_name = "janus_nlp"
 
 
-class CMakeExtension(Extension):
-    def __init__(self, name, sourcedir=''):
-        Extension.__init__(self, name, sources=[])
-        self.sourcedir = os.path.abspath(sourcedir)
+def get_extensions():
+    debug_mode = os.getenv("DEBUG", "0") == "1"
+    use_cuda = os.getenv("USE_CUDA", "1") == "1"
+    if debug_mode:
+        print("Compiling in debug mode")
 
-class CMakeBuild(build_ext):
-    def run(self):
-        try:
-            subprocess.check_call(['cmake', '--version'])
-        except OSError:
-            raise RuntimeError("CMake must be installed to build the following extensions: " +
-                               ", ".join(e.name for e in self.extensions))
+    use_cuda = use_cuda and torch.cuda.is_available() and CUDA_HOME is not None
+    extension = CUDAExtension if use_cuda else CppExtension
 
-        for ext in self.extensions:
-            self.build_extension(ext)
+    extra_link_args = []
+    extra_compile_args = {
+        "cxx": [
+            "-O3" if not debug_mode else "-O0",
+            "-fdiagnostics-color=always",
+        ],
+        "nvcc": [
+            "-O3" if not debug_mode else "-O0",
+        ],
+    }
+    if debug_mode:
+        extra_compile_args["cxx"].append("-g")
+        extra_compile_args["nvcc"].append("-g")
+        extra_link_args.extend(["-O0", "-g"])
 
-    def build_extension(self, ext):
-        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
-        cmake_args = [
-            '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-            '-DPYTHON_EXECUTABLE=' + sys.executable
-        ]
-
-        cfg = 'Debug' if self.debug else 'Release'
-        build_args = ['--config', cfg]
-
-        if not os.path.exists(self.build_temp):
-            os.makedirs(self.build_temp)
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args,
-                              cwd=self.build_temp)
-        subprocess.check_call(['cmake', '--build', '.'] + build_args,
-                              cwd=self.build_temp)
+    this_dir = os.path.abspath(os.path.dirname(__file__))
+    print(f"This directory: {this_dir}")
+    extensions_dir = os.path.join(this_dir, "src", "cpp")
+    print(f"Extensions directory: {extensions_dir}")
+    sources = list(glob.glob(os.path.join(extensions_dir, "*.cpp")))
+    print(f"CPP sources: {sources}")
 
 
+    extensions_cuda_dir = os.path.join(extensions_dir, "cuda")
+    cuda_sources = list(glob.glob(os.path.join(extensions_cuda_dir, "*.cu")))
 
+    if use_cuda:
+        sources += cuda_sources
+
+    ext_modules = [
+        extension(
+            f"{library_name}",
+            sources,
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args,
+        )
+    ]
+
+    return ext_modules
 
 
 setup(
-    name='janus_nlp',
-    version='0.1',
-    author='Panos Lambrianides',
-    author_email='panos@twoisone.ai',
-    description='A PyTorch extension with multiple C++ bindings',
-    long_description='NLP solvers based necessary conditions for optimality using dual numbers',
-    packages=find_packages(where="."),
-    package_dir={"": "."},
-    ext_modules=[CMakeExtension('janus_nlp', sourcedir='.')],
-    cmdclass=dict(build_ext=CMakeBuild),
-    zip_safe=False,
+    name=library_name,
+    version="0.1",
+    packages=find_packages(),
+    ext_modules=get_extensions(),
+    install_requires=["torch"],
+    description="Janus NLP",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    cmdclass={"build_ext": BuildExtension},
 )

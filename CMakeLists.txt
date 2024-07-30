@@ -29,7 +29,7 @@ set(CMAKE_BUILD_TYPE_PROFILE "Profile")
 set(CMAKE_CXX_FLAGS_PROFILE "-pg")
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "-pg")
 
-
+#Change this to 
 
 # Find libtorch
 find_package(Torch REQUIRED)
@@ -40,6 +40,8 @@ find_package(Threads REQUIRED)
 
 # Add the shared library
 add_library(janus_nlp MODULE src/cpp/bindings.cpp)
+
+
 target_link_libraries(janus_nlp PRIVATE pybind11::module ${TORCH_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
 # Ensure the extension is named correctly for Python import

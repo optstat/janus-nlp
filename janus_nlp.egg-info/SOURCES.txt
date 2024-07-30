@@ -1,8 +1,9 @@
 LICENSE
 README.md
 setup.py
+/home/panos/Applications/research/janus-nlp/src/cpp/bindings.cpp
 janus_nlp.egg-info/PKG-INFO
 janus_nlp.egg-info/SOURCES.txt
 janus_nlp.egg-info/dependency_links.txt
-janus_nlp.egg-info/not-zip-safe
+janus_nlp.egg-info/requires.txt
 janus_nlp.egg-info/top_level.txt
