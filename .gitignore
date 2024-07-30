@@ -31,8 +31,13 @@
 *.out
 *.app
 
+# Build and distribution directories
 /build
 /dist
+
+# IDE and editor configurations
 /.vscode
-/janus_nlp.egg-info
-/janus_nlp
+
+/janus_nlp/
+# Egg info directory
+/janus_nlp.egg-info/
