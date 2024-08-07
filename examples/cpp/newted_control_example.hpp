@@ -121,7 +121,7 @@ namespace janus
           TensorDual umax = TensorDual(10 * torch::ones({M, 1}, torch::dtype(torch::kFloat64)),
                                        torch::zeros({M, 1, D}, torch::dtype(torch::kFloat64)));
 
-          auto res = newtTeD(u0, params, umin, umax, propagate, jac_eval);
+          auto res = newtTeD(u0, params, propagate, jac_eval);
           auto roots = std::get<0>(res);
           auto check = std::get<1>(res);
           auto errors = Jfunc(propagate(roots, params));
@@ -134,10 +134,10 @@ namespace janus
           auto h = 1.0e-8 * maxres;
           auto params1p = params.clone();
           params1p.r.index_put_({Slice(), Slice(0, 1)}, params1p.index({Slice(), Slice(0, 1)}).r + h);
-          auto res1p = newtTeD(u0, params1p, umin, umax, propagate, jac_eval);
+          auto res1p = newtTeD(u0, params1p, propagate, jac_eval);
           auto params1m = params.clone();
           params1m.r.index_put_({Slice(), Slice(0, 1)}, params1m.index({Slice(), Slice(0, 1)}).r - h);
-          auto res1m = newtTeD(u0, params1m, umin, umax, propagate, jac_eval);
+          auto res1m = newtTeD(u0, params1m, propagate, jac_eval);
           auto grad1 = (std::get<0>(res1p).r - std::get<0>(res1m).r) / (2 * h);
           std::cerr << "grad1=" << grad1 << std::endl;
           std::cerr << "check1=" << roots.d.index({Slice(), Slice(0, 1), Slice(0, 1)}) << std::endl;
@@ -147,10 +147,10 @@ namespace janus
           h = 1.0e-8 * maxres;
           auto params2p = params.clone();
           params2p.r.index_put_({Slice(), Slice(1, 2)}, params2p.index({Slice(), Slice(1, 2)}).r + h);
-          auto res2p = newtTeD(u0, params2p, umin, umax, propagate, jac_eval);
+          auto res2p = newtTeD(u0, params2p, propagate, jac_eval);
           auto params2m = params.clone();
           params2m.r.index_put_({Slice(), Slice(1, 2)}, params1m.index({Slice(), Slice(1, 2)}).r - h);
-          auto res2m = newtTeD(u0, params2m, umin, umax, propagate, jac_eval);
+          auto res2m = newtTeD(u0, params2m, propagate, jac_eval);
           auto grad2 = (std::get<0>(res2p).r - std::get<0>(res2m).r) / (2 * h);
           std::cerr << "grad2=" << grad2 << std::endl;
           std::cerr << "check2=" << roots.d.index({Slice(), Slice(0, 1), Slice(1, 2)}) << std::endl;
@@ -160,10 +160,10 @@ namespace janus
           h = 1.0e-8 * maxres;
           auto params3p = params.clone();
           params3p.r.index_put_({Slice(), Slice(2, 3)}, params2p.index({Slice(), Slice(2, 3)}).r + h);
-          auto res3p = newtTeD(u0, params3p, umin, umax, propagate, jac_eval);
+          auto res3p = newtTeD(u0, params3p, propagate, jac_eval);
           auto params3m = params.clone();
           params3m.r.index_put_({Slice(), Slice(2, 3)}, params1m.index({Slice(), Slice(2, 3)}).r - h);
-          auto res3m = newtTeD(u0, params3m, umin, umax, propagate, jac_eval);
+          auto res3m = newtTeD(u0, params3m, propagate, jac_eval);
           auto grad3 = (std::get<0>(res3p).r - std::get<0>(res3m).r) / (2 * h);
           std::cerr << "grad3=" << grad3 << std::endl;
           std::cerr << "check3=" << roots.d.index({Slice(), Slice(0, 1), Slice(2, 3)}) << std::endl;
@@ -173,10 +173,10 @@ namespace janus
           h = 1.0e-8 * maxres;
           auto params4p = params.clone();
           params4p.r.index_put_({Slice(), Slice(3, 4)}, params2p.index({Slice(), Slice(3, 4)}).r + h);
-          auto res4p = newtTeD(u0, params4p, umin, umax, propagate, jac_eval);
+          auto res4p = newtTeD(u0, params4p, propagate, jac_eval);
           auto params4m = params.clone();
           params4m.r.index_put_({Slice(), Slice(3, 4)}, params1m.index({Slice(), Slice(3, 4)}).r - h);
-          auto res4m = newtTeD(u0, params4m, umin, umax, propagate, jac_eval);
+          auto res4m = newtTeD(u0, params4m, propagate, jac_eval);
           auto grad4 = (std::get<0>(res4p).r - std::get<0>(res4m).r) / (2 * h);
           std::cerr << "grad4=" << grad4 << std::endl;
           std::cerr << "check4=" << roots.d.index({Slice(), Slice(0, 1), Slice(3, 4)}) << std::endl;

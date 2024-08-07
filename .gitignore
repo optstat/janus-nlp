@@ -30,6 +30,7 @@
 *.exe
 *.out
 *.app
+out.txt
 
 # Build and distribution directories
 /build
@@ -41,3 +42,4 @@
 /janus_nlp/
 # Egg info directory
 /janus_nlp.egg-info/
+/smac3_output/

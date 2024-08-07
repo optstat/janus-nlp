@@ -14,22 +14,26 @@ namespace janus
 
     std::tuple<TensorDual, torch::Tensor> newtTeD(TensorDual &x,
                                                   const TensorDual &params,
-                                                  const TensorDual &xmin,
-                                                  const TensorDual &xmax,
                                                   const std::function<TensorDual(const TensorDual &, const TensorDual &)> &func,
                                                   const std::function<TensorMatDual(const TensorDual &, const TensorDual &)> &jacfunc)
     {
-        int MAXITS = 500;
-        //Evaluate the function and the jacobian as well as the internal quadratic objective function J
+        int MAXITS = 200;
+        auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
+        auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(x.device());
+
+        auto xold = x.clone();
+
         auto f = func(x, params);
         auto jac  = jacfunc(x, params);
         auto J = Jfunc(f);
+
+        auto fold = f.clone();
+        auto Jold = J.clone();
+
         const auto STPMX = torch::tensor({100.0}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLF = torch::tensor({1.0e-8}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLMIN = torch::tensor({1.0e-12}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLX = torch::tensor(std::numeric_limits<double>::epsilon(), torch::dtype(torch::kFloat64)).to(x.device());
-        auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
-        auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(x.device());
         int M = x.r.size(0); // Batch size
         int N = x.r.size(1); // State space size
         auto xnorm = x.square().sum().sqrt();
@@ -38,9 +42,6 @@ namespace janus
         // Is the initial guess a root?
         auto test = f.abs().max(); // This is dimension M
         auto check = torch::zeros({M}, torch::dtype(torch::kBool)).to(x.device()); 
-        auto xold = x.clone();
-        auto fold = f.clone();
-        auto Jold = J.clone();
         auto p = TensorDual::zeros_like(f);
         auto g = TensorDual::zeros_like(x);
         int count = 0;
@@ -103,8 +104,6 @@ namespace janus
             auto pin = p.index({m2}).contiguous();
             auto stpmaxin = stpmax.index({m2}).contiguous();
             auto paramsin = params.index({m2}).contiguous();
-            auto xminm2 = xmin.index({m2}).contiguous();
-            auto xmaxm2 = xmax.index({m2}).contiguous();
             auto [xs, js, ps, checkupd] = lnsrchTeD(xoldin,
                                                    foldin,
                                                    joldin,
@@ -112,8 +111,6 @@ namespace janus
                                                    pin,
                                                    stpmaxin,
                                                    paramsin,
-                                                   xminm2,
-                                                   xmaxm2,
                                                    func);
             auto x_copy = x.clone();
             x_copy.index_put_({m2}, xs);

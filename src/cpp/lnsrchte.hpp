@@ -19,7 +19,7 @@ namespace janus
         }
         else
         {
-            return 0.5 * F.pow(2).sum(1);
+            return 0.5 * F.pow(2).sum(1, true);
         }
     }
 
@@ -33,8 +33,6 @@ namespace janus
                                                                                     torch::Tensor &p,
                                                                                     torch::Tensor &stpmax,
                                                                                     torch::Tensor &params,
-                                                                                    const torch::Tensor &xmin,
-                                                                                    const torch::Tensor &xmax,
                                                                                     std::function<torch::Tensor(torch::Tensor &, torch::Tensor &)> func)
     {
         const torch::Tensor ALF = torch::tensor({1.0e-4}, torch::dtype(torch::kFloat64)).to(xold.device());
@@ -86,20 +84,6 @@ namespace janus
                          torch::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                     p.index({m2}).contiguous()});
             // Check if the new x is within bounds
-            auto m2_1_1 = (xupdt < xmin.index({m2})).all(1);    
-            if (m2_1_1.eq(true_t).any().item<bool>())
-            {
-                xupdt.index_put_({m2_1_1}, xmin.index({m2_1_1}));
-                //also update the lambda factor
-                alam.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
-            }
-            auto m2_1_2 = (xupdt > xmax.index({m2})).all(1);
-            if (m2_1_2.eq(true_t).any().item<bool>())
-            {
-                xupdt.index_put_({m2_1_2}, xmax.index({m2_1_2}));
-                //also update the lambda factor
-                alam.index_put_({m2_1_2}, (xmax.index({m2_1_2}) - xold.index({m2_1_2})) / p.index({m2_1_2}));
-            }
             x.index_put_({m2}, xupdt);
             auto xm2 = x.index({m2}).contiguous();
             auto paramsm2 = params.index({m2}).contiguous();

@@ -30,8 +30,6 @@ namespace janus
                                                                         TensorDual &p,
                                                                         TensorDual &stpmax,
                                                                         TensorDual &params,
-                                                                        TensorDual &xmin,
-                                                                        TensorDual &xmax,
                                                                         std::function<TensorDual(TensorDual &, TensorDual &)> func)
     {
         const torch::Tensor ALF = torch::tensor({1.0e-4}, torch::dtype(torch::kFloat64)).to(xold.device());
@@ -88,30 +86,6 @@ namespace janus
             auto xupdt = xold.index({m2}).contiguous() +
                          TensorDual::einsum("mi,mi->mi", {alam.index({m2}).contiguous(), 
                                                          p.index({m2}).contiguous()});
-            // Check if the new x is within bounds
-            auto m2_1_1 = (xupdt < xmin.index({m2}));
-            m2_1_1=m2_1_1.dim()> 1 ? m2_1_1.all(1) : m2_1_1;   
-            if (m2_1_1.eq(true_t).any().item<bool>())
-            {
-                auto xupdt_copy = xupdt.clone();
-                xupdt_copy.index_put_({m2_1_1}, xmin.index({m2_1_1}));
-                xupdt = xupdt_copy;
-                //also update the lambda factor
-                auto alam_copy = alam.clone();
-                alam_copy.index_put_({m2_1_1}, (xmin.index({m2_1_1}) - xold.index({m2_1_1})) / p.index({m2_1_1}));
-                alam = alam_copy;
-            }
-            auto m2_1_2 = (xupdt > xmax.index({m2}));
-            if (m2_1_2.eq(true_t).any().item<bool>())
-            {
-                auto xupdt_copy = xupdt.clone();
-                xupdt_copy.index_put_({m2_1_2}, xmax.index({m2_1_2}));
-                xupdt = xupdt_copy;
-                //also update the lambda factor
-                auto alam_copy = alam.clone();
-                alam_copy.index_put_({m2_1_2}, (xmax.index({m2_1_2}) - xold.index({m2_1_2})) / p.index({m2_1_2}));
-                alam = alam_copy;
-            }
             auto x_copy = x.clone();
             x_copy.index_put_({m2}, xupdt);
             x = x_copy;

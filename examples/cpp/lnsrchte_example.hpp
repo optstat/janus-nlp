@@ -126,8 +126,6 @@ void test_quadratic()
                                                             p, 
                                                             stpmax, 
                                                             params, 
-                                                            xmin,
-                                                            xmax,
                                                             quadratic);
 
     // Print the results
@@ -174,8 +172,6 @@ void test_cubic()
                                                             p, 
                                                             stpmax, 
                                                             params,
-                                                            xmin,
-                                                            xmax, 
                                                             cubic);
 
     // Print the results
@@ -225,8 +221,6 @@ void test_2d()
                                                             p, 
                                                             stpmax, 
                                                             params, 
-                                                            xmin, 
-                                                            xmax,
                                                             func2d);
 
     // Print the results

@@ -1,5 +1,5 @@
 #!/bin/bash
-
+export DEBUG=0
 # Create the virtual environment if it doesn't exist
 if [ ! -d "build/venv" ]; then
     python3 -m venv build/venv
@@ -9,7 +9,7 @@ fi
 source build/venv/bin/activate
 
 # Install necessary packages
-pip3 install setuptools wheel numpy scipy torch smac
+pip3 install setuptools wheel numpy matplotlib scipy torch smac botorch ax-platform gpytorch scikit-learn joblib
 
 # Download and extract LibTorch
 LIBTORCH_URL="https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-latest.zip"
@@ -34,7 +34,7 @@ export Torch_INCLUDE_DIR=$(pwd)/build/libtorch/include
 rm -rf build/lib
 
 # Run the setup script
-python3 setup.py build_ext --verbose
+python3 setup.py build_ext --inplace
 pip install .
 
 

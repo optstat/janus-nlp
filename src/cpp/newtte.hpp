@@ -12,22 +12,27 @@ namespace janus
   namespace nlp {
     std::tuple<torch::Tensor, torch::Tensor> newtTe(torch::Tensor &x,
                                                   const torch::Tensor &params,
-                                                  const torch::Tensor &xmin,
-                                                  const torch::Tensor &xmax,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &func,
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &jacfunc)
     {
-        int MAXITS = 500;
+        int MAXITS = 200;
+        auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
+        auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(x.device());
+
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J
+
+        auto xold = x.clone();
+
         auto f = func(x, params);
         auto jac  = jacfunc(x, params);
         auto J = Jfunc(f);
+        auto fold = f.clone();
+        auto Jold = J.clone();
+
         const auto STPMX = torch::tensor({100.0}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLF = torch::tensor({1.0e-8}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLMIN = torch::tensor({1.0e-12}, torch::dtype(torch::kFloat64)).to(x.device());
         const auto TOLX = torch::tensor(std::numeric_limits<double>::epsilon(), torch::dtype(torch::kFloat64)).to(x.device());
-        auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
-        auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(x.device());
         int M = x.size(0); // Batch size
         int N = x.size(1); // State space size
         auto xnorm = x.square().sum(1).sqrt();
@@ -36,9 +41,6 @@ namespace janus
         // Is the initial guess a root?
         auto test = std::get<0>(f.abs().max(1, false)); // This is dimension M
         auto check = torch::zeros({M}, torch::dtype(torch::kBool)).to(x.device()); 
-        auto xold = x.clone();
-        auto fold = f.clone();
-        auto Jold = J.clone();
         auto p = torch::zeros_like(f);
         auto g = torch::zeros_like(x);
         int count = 0;
@@ -87,8 +89,6 @@ namespace janus
             auto paramsin = params.index({m2}).contiguous();
             std::cerr << "At count = " << count << std::endl;
             std::cerr << "Input into lnsrch " << xoldin << std::endl;
-            auto xminm2 = xmin.index({m2}).contiguous();
-            auto xmaxm2 = xmax.index({m2}).contiguous();
             auto [xs, js, ps, checkupd] = lnsrchTe(xoldin,
                                                    foldin,
                                                    joldin,
@@ -96,8 +96,6 @@ namespace janus
                                                    pin,
                                                    stpmaxin,
                                                    paramsin,
-                                                   xminm2,
-                                                   xmaxm2,
                                                    func);
             std::cerr << "Output from lnsrch " << xs << std::endl;
             std::cerr << "Error at count=" << count << " "<< js << std::endl;

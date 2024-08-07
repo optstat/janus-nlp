@@ -18,11 +18,24 @@ include_directories(${CMAKE_SOURCE_DIR}/src/cpp)
 include_directories(${CMAKE_SOURCE_DIR}/examples/cpp)
 include_directories(${TORCH_INCLUDE_DIRS})  # Include Torch headers
 
+# Default to Release build type if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
 
-# Set debug flags
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
-# Add DEBUG definition
-#add_definitions(-DDEBUG)
+# Clear any default flags to avoid unwanted -g flags
+set(CMAKE_CXX_FLAGS_DEBUG "")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -fdiagnostics-color=always")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_RELEASE}")
+# Check the build type and set flags accordingly
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
+endif()
+
+# Add DEBUG definition only for debug builds
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-DDEBUG)
+endif()
 
 # Define a custom build type for profiling
 set(CMAKE_BUILD_TYPE_PROFILE "Profile")
