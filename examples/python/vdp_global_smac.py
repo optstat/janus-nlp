@@ -105,7 +105,7 @@ if __name__ == "__main__":
     print(f"Incumbent cost: {incumbent_cost}")
 
     #Now pass this to the Newton method to calculate the precise value
-    res = vdpNewt(incumbent("p2"), incumbent("ft"))
+    res = janus_nlp.vdpNewt(incumbent["p2"], incumbent["ft"])
     print(f"Optimal p2: {res[0][0]}, Optimal ft: {res[0][1]}")
 
     # Let's plot it too
