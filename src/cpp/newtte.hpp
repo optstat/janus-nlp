@@ -16,7 +16,7 @@ namespace janus
                                                   const std::function<torch::Tensor(const torch::Tensor &, const torch::Tensor &)> &jacfunc)
     {
         int MAXITS = 200;
-        auto true_t = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
+        auto true_t  = torch::tensor({true}, torch::dtype(torch::kBool)).to(x.device());
         auto false_t = torch::tensor({false}, torch::dtype(torch::kBool)).to(x.device());
 
         //Evaluate the function and the jacobian as well as the internal quadratic objective function J

@@ -4,7 +4,9 @@ import numpy as np
 from smac import HyperparameterOptimizationFacade as HPOFacade
 from smac import Scenario, RunHistory
 from ConfigSpace import Configuration, ConfigurationSpace, Float
+from dask.distributed import Client, Queue, get_worker
 import matplotlib.pyplot as plt
+
 
 # Set the device
 device = torch.device("cpu")
@@ -36,7 +38,7 @@ def vdp(x):
     x2ft = torch.ones_like(p2) * x2f
     janus_nlp.set_xf(x1ft, x2ft)
 
-    p1 = janus_nlp.calc_p10(p2)
+    p1 = janus_nlp.calc_p10_tensor(p2)
     print(f"p1: {p1}")
     [roots, errors] = janus_nlp.vdp_solve(p1, p2, ft)    
     return errors
@@ -53,6 +55,10 @@ class VDPTargetFunction:
 
     def train(self, config: Configuration, seed: int = 0) -> Float:
         """Target function to minimize."""
+        worker = get_worker()
+        worker_id = worker.id
+        logging.info(f"Worker ID: {worker_id} - Running configuration: {config}")
+
         x = torch.tensor([[config['p2'], config['ft']]], dtype=dtype, device=device)
         assert p20min <= config['p2'] <= p20max, "p2 out of bounds"
         assert ftmin <= config['ft'] <= ftmax, "ft out of bounds"
@@ -103,6 +109,8 @@ if __name__ == "__main__":
     # Let's calculate the cost of the incumbent
     incumbent_cost = smac.validate(incumbent)
     print(f"Incumbent cost: {incumbent_cost}")
+
+    #Now pass this to the Newton method to calculate the precise value
 
     # Let's plot it too
     #plot(smac.runhistory, incumbent)
