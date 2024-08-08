@@ -28,19 +28,16 @@ def denormalize(X, bounds):
 def vdp(x):
     p2 = x[:, 0:1]
     print(f"p2: {p2}")    
-    assert p20min <= p2 <= p20max, "p2 out of bounds"
 
     ft = x[:, 1:2]    
+    print(f"ft: {ft}")
     x10t = torch.ones_like(p2) * x10
     x20t = torch.ones_like(p2) * x20
     janus_nlp.set_x0(x10t, x20t)
     x1ft = torch.ones_like(p2) * x1f
     x2ft = torch.ones_like(p2) * x2f
     janus_nlp.set_xf(x1ft, x2ft)
-
-    p1 = janus_nlp.calc_p10_tensor(p2)
-    print(f"p1: {p1}")
-    [roots, errors] = janus_nlp.vdp_solve(p1, p2, ft)    
+    errors = janus_nlp.vdp_solve(x)    
     return errors
 
 class VDPTargetFunction:
@@ -55,11 +52,8 @@ class VDPTargetFunction:
 
     def train(self, config: Configuration, seed: int = 0) -> Float:
         """Target function to minimize."""
-        worker = get_worker()
-        worker_id = worker.id
-        logging.info(f"Worker ID: {worker_id} - Running configuration: {config}")
 
-        x = torch.tensor([[config['p2'], config['ft']]], dtype=dtype, device=device)
+        x = torch.tensor([config['p2'], config['ft']], dtype=dtype, device=device).unsqueeze(0)
         assert p20min <= config['p2'] <= p20max, "p2 out of bounds"
         assert ftmin <= config['ft'] <= ftmax, "ft out of bounds"
 
@@ -111,6 +105,8 @@ if __name__ == "__main__":
     print(f"Incumbent cost: {incumbent_cost}")
 
     #Now pass this to the Newton method to calculate the precise value
+    res = vdpNewt(incumbent("p2"), incumbent("ft"))
+    print(f"Optimal p2: {res[0][0]}, Optimal ft: {res[0][1]}")
 
     # Let's plot it too
     #plot(smac.runhistory, incumbent)

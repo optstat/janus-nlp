@@ -27,6 +27,7 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("calc_p10_tensor_dual", 
           static_cast<TensorDual (*)(const TensorDual &)>(&janus::nlp::examples::vdp::calc_p10), 
           "Calculate the initial guess for the first Lagrange multiplier with TensorDual");
+    m.def("vdp_solve", &janus::nlp::examples::vdp::vdp_solve, "Solve the VDPC example");
     m.def("vdp_solve_traj", &janus::nlp::examples::vdp::solve_traj, "Generate costate and state trajectories");
-
+    m.def("vdpNewt", &janus::nlp::examples::vdp::vdpNewt, "Newton method for the VDPC example");
 }

@@ -285,8 +285,7 @@ namespace janus
          * of optimality as defined by the Variational approach to
          * optimal control
          */
-        torch::Tensor propagate(const torch::Tensor &x, 
-                                const torch::Tensor &params,
+        torch::Tensor propagate(const torch::Tensor &x,
                                 const double rtol = 1e-3,
                                 const double atol = 1e-6)
         {
@@ -301,9 +300,9 @@ namespace janus
 
           TensorDual y = TensorDual(torch::zeros({M, N}, torch::kF64).to(device),
                                     torch::zeros({M, N, D}, torch::kF64).to(device));
-          auto p10 = x.index({Slice(), Slice(0, 1)});
-          auto p20 = x.index({Slice(), Slice(1, 2)});
-          auto ft  = x.index({Slice(), Slice(2, 3)});
+          auto p20 = x.index({Slice(), Slice(0, 1)});
+          auto p10 = calc_p10(p20);  //This is a dependent variable
+          auto ft  = x.index({Slice(), Slice(1, 2)});
           y.r.index_put_({Slice(), Slice(0, 1)}, p10); // p1p
           y.r.index_put_({Slice(), Slice(1, 2)}, p20); // p2p
           y.r.index_put_({Slice(), Slice(2, 3)}, x10); // x1
@@ -319,7 +318,7 @@ namespace janus
           // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
           TensorDual tspan = TensorDual(torch::rand({M, 2}, torch::kFloat64).to(device),
                                         torch::zeros({M, 2, D}, torch::kFloat64).to(device));
-          tspan.r.index_put_({Slice(), Slice{0, 1}}, 0.0);
+          tspan.r.index_put_({Slice(), Slice(0, 1)}, 0.0);
           // tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
           tspan.r.index_put_({Slice(), Slice(1, 2)}, ft);
           tspan.d.index_put_({Slice(), 1, -1}, 1.0); // Sensitivity to the final time
@@ -471,9 +470,13 @@ namespace janus
 
         /**
          * Calculate the Jacobian of the propagation function
+         * Using dual numbers to calculate the sensitivity
          *
          */
-        torch::Tensor jac_eval(const torch::Tensor &x, const torch::Tensor &params)
+        torch::Tensor jac_eval(const torch::Tensor &x, 
+                               const torch::Tensor &params,
+                               double rtol=1.0e-3,
+                               double atol=1.0e-6)
         {
           // set the device
           // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
@@ -482,7 +485,7 @@ namespace janus
           int D = 5; // Length of the dual vector in order [p1, p2, x1, x2, tf]
 
           auto p20 = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-          p20.d.index_put_({Slice(), 1, 1}, 1.0); //Set the dependency to itself
+          p20.d.index_put_({Slice(), 1, 1}, 1.0); //This is an independent variable whose sensitivity we are interested in
         
           auto ft  = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
           ft.d.index_put_({Slice(), 4, 4}, 1.0); //Set the dependency to itself
@@ -490,12 +493,12 @@ namespace janus
                                     torch::zeros({M, N, D}, x.options()));
           TensorDual x10 = TensorDual(x.index({Slice(), Slice(2, 3)}), torch::zeros({M, 1, D}, x.options()));
           TensorDual x20 = TensorDual(x.index({Slice(), Slice(3, 4)}), torch::zeros({M, 1, D}, x.options()));
-          auto p10 = calc_p10(p20);
+          auto p10 = calc_p10(p20);  //This is a dependent variable
           y.index_put_({Slice(), Slice(0, 1)}, p10); // p1
           y.index_put_({Slice(), Slice(1, 2)}, p20); // p2p
           y.index_put_({Slice(), Slice(2, 3)}, x10); // x1
           y.index_put_({Slice(), Slice(3, 4)}, x20); // x2    
-          auto y0  = y.clone();        
+          auto y0  = y.clone(); //Copy of the initial conditions       
                    
           
 
@@ -509,8 +512,8 @@ namespace janus
           // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
           // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
           janus::OptionsTeD options = janus::OptionsTeD(); // Initialize with default options
-          options.RelTol = torch::tensor({1e-3}, x.options());
-          options.AbsTol = torch::tensor({1e-6}, x.options());
+          options.RelTol = torch::tensor({rtol}, x.options());
+          options.AbsTol = torch::tensor({atol}, x.options());
 
           options.MaxNbrStep = MaxNbrStep;
           auto tspanc = tspan.clone();
@@ -556,6 +559,15 @@ namespace janus
           return jacVal;
         }
 
+
+        torch::Tensor vdp_solve(const torch::Tensor& x)
+        {
+          auto res = propagate(x); 
+          return Jfunc(res);
+
+        }
+
+
         /**
          * The goal of this example is to solve for a minimum time optimal control problem
          * that can become very stiff very suddenly requiring the use of dual number
@@ -583,7 +595,7 @@ namespace janus
 
           torch::Tensor y0 = torch::cat({p20p, ft}, 1).to(device);
 
-          torch::Tensor params = torch::zeros_like(y0);
+          
           // Impose limits on the state space
 
           //auto res = newtTe(y0, params, propagate, jac_eval);
@@ -591,7 +603,7 @@ namespace janus
           //auto check = std::get<1>(res);
           //std::cerr << "roots=" << roots << "\n";
           //std::cerr << "check=" << check << "\n";
-          auto prop_res = propagate(y0, params);
+          auto prop_res = propagate(y0);
           std::cerr << "prop_res sizes=" << prop_res.sizes() << "\n";
           auto errors = Jfunc(prop_res);
           std::cerr << "errors=" << errors << "\n";
