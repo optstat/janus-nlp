@@ -13,9 +13,9 @@ device = torch.device("cpu")
 dtype = torch.double
 
 # Define parameter bounds
-p20min, p20max = 10.0, 25.0
-ftmin, ftmax   = 0.1, 1.0
-x1f, x2f       = -1.5, -25.0
+p20min, p20max = -100.0, 100.0
+ftmin, ftmax   = 0.1, 5.0
+x1f, x2f       = -1.0, -10.0
 x10, x20       = 1.0,  2.0
 
 # Define normalization and standardization functions
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     model = VDPTargetFunction()
 
     # Scenario object specifying the optimization "environment"
-    scenario = Scenario(model.configspace, deterministic=True, n_trials=300)
+    scenario = Scenario(model.configspace, deterministic=True, n_trials=1000)
 
     # Now we use SMAC to find the best hyperparameters
     smac = HPOFacade(
@@ -105,8 +105,17 @@ if __name__ == "__main__":
     print(f"Incumbent cost: {incumbent_cost}")
 
     #Now pass this to the Newton method to calculate the precise value
-    res = janus_nlp.vdpNewt(incumbent["p2"], incumbent["ft"])
-    print(f"Optimal p2: {res[0][0]}, Optimal ft: {res[0][1]}")
+    # Ensure that incumbent["p2"] and incumbent["ft"] are sequences
+    p2 = incumbent["p2"] if isinstance(incumbent["p2"], (list, tuple)) else [incumbent["p2"]]
+    ft = incumbent["ft"] if isinstance(incumbent["ft"], (list, tuple)) else [incumbent["ft"]]
+
+    # Convert to torch tensors
+    p2_tensor = torch.Tensor(p2).unsqueeze(0)
+    ft_tensor = torch.Tensor(ft).unsqueeze(0)
+
+    # Pass the tensors to janus_nlp.vdpNewt
+    res = janus_nlp.vdpNewt(p2_tensor, ft_tensor, 1.0e-12, 1.0e-14)
+    print(f"Optimal solution: {res}")
 
     # Let's plot it too
     #plot(smac.runhistory, incumbent)

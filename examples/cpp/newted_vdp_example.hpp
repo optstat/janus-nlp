@@ -36,7 +36,7 @@ namespace janus
          */
         using Slice = torch::indexing::Slice;
         // Global parameters for simplicity
-        double W = 1.0;
+        double W = 0.01;
         double mu = 1.0;
         double alpha = 1.0;
         torch::Tensor x1f = torch::tensor({-1.0}, {torch::kFloat64});
@@ -145,7 +145,7 @@ namespace janus
 
           //auto p1 = -(p2 *u*((1 - x1 * x1) * x2 - x1 / alpha) + W * u * u / 2 + 1.0/alpha)/x2;
           //This is a minimum time Hamiltonian
-          auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2 - x1))+0.5*W*u*u+ 1.0;
+          auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0;
           //std::cerr << "H=" << H << std::endl;
           //std::cerr << "p1=" << p1 << std::endl;
           //std::cerr << "p2=" << p2 << std::endl;
@@ -184,10 +184,10 @@ namespace janus
           auto x1 = x.index({Slice(), Slice(0,1)});
           auto p2 = p.index({Slice(), Slice(1,2)});
           auto p1 = p.index({Slice(), Slice(0,1)});
-          //p1*x2+p2*(u*((1 - x1 * x1) * x2 - x1))+0.5*W*u*u+ 1.0
+          //p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0
           auto dx1dt = x2;
-          auto dx2dt = ustar*((1-x1*x1)*x2-x1);
-          auto dp1dt = p2*ustar*(-2*x1*x2-1);
+          auto dx2dt = ustar*((1-x1*x1)*x2)-x1;
+          auto dp1dt = p2*(ustar*(-2*x1*x2)-1);
           auto dp2dt = p1+p2*ustar*(1-x1*x1);
           auto real_dyns = TensorDual::cat({dp1dt, dp2dt, dx1dt, dx2dt});
 
@@ -214,18 +214,18 @@ namespace janus
           auto jac = TensorMatDual(torch::zeros({y.r.size(0), 4, 4}, torch::kFloat64),
                                     torch::zeros({y.r.size(0), 4, 4, y.d.size(2)}, torch::kFloat64));
           auto one = TensorDual::ones_like(x1);
-          //p2*ustar*(-2*x1*x2-1);
-          jac.index_put_({Slice(), Slice(0,1), 1}, ustar*(-2*x1*x2-1));
+          //p2*(ustar*(-2*x1*x2)-1)
+          jac.index_put_({Slice(), Slice(0,1), 1}, ustar*(-2*x1*x2)-1.0);
           jac.index_put_({Slice(), Slice(0,1), 2}, -p2*ustar*2*x2);
           jac.index_put_({Slice(), Slice(0,1), 3}, -p2*ustar*2*x1);
-          //p1+p2*ustar*(1-x1*x1);
+          //p1+p2*ustar*(1-x1*x1)
           jac.index_put_({Slice(), Slice(0, 1),0}, one);
           jac.index_put_({Slice(), Slice(0, 1),1}, ustar*(1-x1*x1));
           jac.index_put_({Slice(), Slice(0, 1),2}, p2*ustar*(-2*x1));  
           //x2;
           jac.index_put_({Slice(), Slice(2,3), 3}, one);
-          //ustar*((1-x1*x1)*x2-x1)
-          jac.index_put_({Slice(), Slice(3,4), 2}, ustar*(-2*x1*x2-1));
+          //ustar*((1-x1*x1)*x2)-x1;
+          jac.index_put_({Slice(), Slice(3,4), 2}, ustar*(-2*x1*x2)-1.0);
           jac.index_put_({Slice(), Slice(3,4), 3}, ustar*((1-x1*x1))); 
           return jac;
         }
@@ -246,8 +246,8 @@ namespace janus
           std::cerr << "x10t=" << x10t << std::endl;
           std::cerr << "x20t=" << x20t << std::endl;
           std::cerr << "mu=" << mu << std::endl;
-          //auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2 - x1))+0.5*W*u*u+ 1.0;
-          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t - x10t))+0.5*W*ustar*ustar+ 1.0)/x20t;
+          //auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0;
+          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t) - x10t)+0.5*W*ustar*ustar+1.0)/x20t;
           //std::cerr << "p10p_sloginv=" << p10p_sloginv << std::endl;
           //auto res = slog(p10p_sloginv);
           //std::cerr << "p10=" << res << std::endl;
@@ -265,7 +265,7 @@ namespace janus
           auto x = TensorDual::cat({x10t, x20t});
           //We don't need the sensitivities of the control just the real part
           auto ustar = calc_control(x.r, p.r);
-          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t - x10t))+0.5*W*ustar*ustar+ 1.0)/x20t;
+          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t) - x10t)+0.5*W*ustar*ustar+ 1.0)/x20t;
           //std::cerr << "p10p_sloginv=" << p10p_sloginv << std::endl;
           //auto res = slog(p10p_sloginv);
           //std::cerr << "p10=" << res << std::endl;
@@ -285,11 +285,11 @@ namespace janus
          * of optimality as defined by the Variational approach to
          * optimal control
          */
-        torch::Tensor propagate(const torch::Tensor &x,
-                                const double rtol = 1e-3,
-                                const double atol = 1e-6)
+        torch::Tensor propagate(const torch::Tensor &x, 
+                                const torch::Tensor &params)
         {
-
+          auto rtol = params.index({0, 0}).item<double>();
+          auto atol = params.index({0, 1}).item<double>();
           // set the device
           // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
           int M = x.size(0); // Number of samples
@@ -474,16 +474,15 @@ namespace janus
          *
          */
         torch::Tensor jac_eval(const torch::Tensor &x, 
-                               const torch::Tensor &params,
-                               double rtol=1.0e-3,
-                               double atol=1.0e-6)
+                               const torch::Tensor &params)
         {
           // set the device
           // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
           int M = x.size(0);
           int N = 4; // Length of the state space vector in order [p1, p2, x1, x2]
           int D = 5; // Length of the dual vector in order [p1, p2, x1, x2, tf]
-
+          auto rtol = params.index({0, 0}).item<double>();
+          auto atol = params.index({0, 1}).item<double>();
           auto p20 = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
           p20.d.index_put_({Slice(), 1, 1}, 1.0); //This is an independent variable whose sensitivity we are interested in
         
@@ -560,10 +559,14 @@ namespace janus
         }
 
 
-        torch::Tensor vdp_solve(const torch::Tensor& x)
+        torch::Tensor vdp_solve(torch::Tensor& x)
         {
-          auto res = propagate(x); 
-          return Jfunc(res);
+          auto ft = x.index({Slice(), Slice(1, 2)});
+          auto params = torch::ones({1, 2}, torch::kFloat64).to(x.device());
+          params.index_put_({0, 0}, 1.0e-3); //rtol
+          params.index_put_({0, 1}, 1.0e-6); //atol
+          auto res = propagate(x, params); 
+          return 100*Jfunc(res)+ft;
 
         }
 
@@ -575,7 +578,9 @@ namespace janus
          */
 
         std::tuple<torch::Tensor, torch::Tensor> vdpNewt(torch::Tensor& p20p, 
-                                                         torch::Tensor& ft)
+                                                         torch::Tensor& ft, 
+                                                         double rtol=1.0e-3,
+                                                         double atol=1.0e-6)
         {
           void (*pt)(const torch::Tensor &) = janus::print_tensor;
           void (*pd)(const TensorDual &) = janus::print_dual;
@@ -596,14 +601,16 @@ namespace janus
           torch::Tensor y0 = torch::cat({p20p, ft}, 1).to(device);
 
           
-          // Impose limits on the state space
+          auto params = torch::ones({1, 2}, torch::kFloat64).to(device);
+          params.index_put_({0, 0}, rtol); //rtol
+          params.index_put_({0, 1}, atol); //atol
 
-          //auto res = newtTe(y0, params, propagate, jac_eval);
+          auto res = newtTe(y0, params, propagate, jac_eval);
           //auto roots = std::get<0>(res);
           //auto check = std::get<1>(res);
           //std::cerr << "roots=" << roots << "\n";
           //std::cerr << "check=" << check << "\n";
-          auto prop_res = propagate(y0);
+          auto prop_res = propagate(y0, params);
           std::cerr << "prop_res sizes=" << prop_res.sizes() << "\n";
           auto errors = Jfunc(prop_res);
           std::cerr << "errors=" << errors << "\n";
