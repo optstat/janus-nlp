@@ -97,11 +97,11 @@ namespace janus
             auto x2 = x.index({Slice(), Slice(1, 2)});
             // We have to solve
             //auto p2 = p2p.sloginv();
-            auto ustar = (-p2*((1-x1*x1)*x2-x1))/W;
-            auto m = ustar < 0.01;
+            auto ustar = (-p2*((1-x1*x1)*x2)-x1)/W;
+            auto m = ustar < 0.0;
             if ( m.any().item<bool>())
             {
-              ustar.index_put_({m}, 0.01);
+              ustar.index_put_({m}, 0.0);
             }
             //std::cerr << "Control = " << res << std::endl;
             return ustar;
@@ -288,8 +288,18 @@ namespace janus
         torch::Tensor propagate(const torch::Tensor &x, 
                                 const torch::Tensor &params)
         {
-          auto rtol = params.index({0, 0}).item<double>();
-          auto atol = params.index({0, 1}).item<double>();
+          double rtol = 1e-3;
+          double atol = 1e-6;
+          if (params.sizes() == 1)
+          {
+              rtol = params.index({0}).item<double>();
+              atol = params.index({1}).item<double>();
+          }
+          else 
+          {
+              rtol = params.index({Slice(), 0}).item<double>();
+              atol = params.index({Slice(), 1}).item<double>();
+          }
           // set the device
           // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
           int M = x.size(0); // Number of samples
@@ -474,29 +484,39 @@ namespace janus
          *
          */
         torch::Tensor jac_eval(const torch::Tensor &x, 
-                               const torch::Tensor &params)
+                               const torch::Tensor &params)  
         {
+          
           // set the device
           // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
           int M = x.size(0);
           int N = 4; // Length of the state space vector in order [p1, p2, x1, x2]
           int D = 5; // Length of the dual vector in order [p1, p2, x1, x2, tf]
-          auto rtol = params.index({0, 0}).item<double>();
-          auto atol = params.index({0, 1}).item<double>();
+          double rtol = 1e-3;
+          double atol = 1e-6;
+          if ( params.sizes() == 1)
+          {
+           rtol = params.index({0}).item<double>();
+           atol = params.index({1}).item<double>();
+          }
+          else
+          {
+            rtol = params.index({Slice(), 0}).item<double>();
+            atol = params.index({Slice(), 1}).item<double>();
+          }
           auto p20 = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-          p20.d.index_put_({Slice(), 1, 1}, 1.0); //This is an independent variable whose sensitivity we are interested in
+          p20.d.index_put_({Slice(), 0, 1}, 1.0); //This is an independent variable whose sensitivity we are interested in
         
-          auto ft  = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-          ft.d.index_put_({Slice(), 4, 4}, 1.0); //Set the dependency to itself
+          auto ft  = TensorDual(x.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
+          ft.d.index_put_({Slice(), 0, 4}, 1.0); //Set the dependency to itself
           TensorDual y = TensorDual(torch::zeros({M, N}, x.options()),
                                     torch::zeros({M, N, D}, x.options()));
-          TensorDual x10 = TensorDual(x.index({Slice(), Slice(2, 3)}), torch::zeros({M, 1, D}, x.options()));
-          TensorDual x20 = TensorDual(x.index({Slice(), Slice(3, 4)}), torch::zeros({M, 1, D}, x.options()));
+          TensorDual one = TensorDual::ones_like(p20);
           auto p10 = calc_p10(p20);  //This is a dependent variable
           y.index_put_({Slice(), Slice(0, 1)}, p10); // p1
           y.index_put_({Slice(), Slice(1, 2)}, p20); // p2p
-          y.index_put_({Slice(), Slice(2, 3)}, x10); // x1
-          y.index_put_({Slice(), Slice(3, 4)}, x20); // x2    
+          y.index_put_({Slice(), Slice(2, 3)}, one*x10); // x1
+          y.index_put_({Slice(), Slice(3, 4)}, one*x20); // x2    
           auto y0  = y.clone(); //Copy of the initial conditions       
                    
           
@@ -597,19 +617,22 @@ namespace janus
 
           auto device = torch::kCPU;
     
-
+          std::cerr << "p20p=" << p20p << "\n";
+          std::cerr << "ft=" << ft << "\n";
           torch::Tensor y0 = torch::cat({p20p, ft}, 1).to(device);
-
+          std::cerr << "y0=" << y0 << "\n";
           
-          auto params = torch::ones({1, 2}, torch::kFloat64).to(device);
-          params.index_put_({0, 0}, rtol); //rtol
-          params.index_put_({0, 1}, atol); //atol
-
+          auto params = torch::ones({M, 2}, torch::kFloat64).to(device);
+          params.index_put_({Slice(), Slice(0,1)}, rtol); //rtol
+          params.index_put_({Slice(), Slice(1,2)}, atol); //atol
+          std::cerr << "params=" << params << "\n";
           auto res = newtTe(y0, params, propagate, jac_eval);
           //auto roots = std::get<0>(res);
           //auto check = std::get<1>(res);
           //std::cerr << "roots=" << roots << "\n";
           //std::cerr << "check=" << check << "\n";
+          std::cerr << "Calling propagate with y0=" << y0 << "\n"; 
+          std::cerr << "Calling propagate with params=" << params << "\n";
           auto prop_res = propagate(y0, params);
           std::cerr << "prop_res sizes=" << prop_res.sizes() << "\n";
           auto errors = Jfunc(prop_res);

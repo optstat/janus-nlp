@@ -3,19 +3,19 @@ import janus_nlp
 import numpy as np
 from smac import HyperparameterOptimizationFacade as HPOFacade
 from smac import Scenario, RunHistory
-from ConfigSpace import Configuration, ConfigurationSpace, Float
+from ConfigSpace import Configuration, ConfigurationSpace, UniformFloatHyperparameter 
 from dask.distributed import Client, Queue, get_worker
 import matplotlib.pyplot as plt
 
 
 # Set the device
 device = torch.device("cpu")
-dtype = torch.double
+dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
 p20min, p20max = -100.0, 100.0
-ftmin, ftmax   = 0.1, 5.0
-x1f, x2f       = -1.0, -10.0
+ftmin, ftmax   = 0.1, 2.0
+x1f, x2f       = 2.0, -0.1
 x10, x20       = 1.0,  2.0
 
 # Define normalization and standardization functions
@@ -44,13 +44,13 @@ class VDPTargetFunction:
     @property
     def configspace(self) -> ConfigurationSpace:
         cs = ConfigurationSpace(seed=0)
-        p2 = Float("p2", (p20min, p20max), default=14.0615048181484)
-        ft = Float("ft", (ftmin, ftmax), default=0.6845769013836)
+        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=14.0615048181484)
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=0.6845769013836)
         cs.add_hyperparameters([p2, ft])
 
         return cs
 
-    def train(self, config: Configuration, seed: int = 0) -> Float:
+    def train(self, config: Configuration, seed: int = 0):
         """Target function to minimize."""
 
         x = torch.tensor([config['p2'], config['ft']], dtype=dtype, device=device).unsqueeze(0)
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     model = VDPTargetFunction()
 
     # Scenario object specifying the optimization "environment"
-    scenario = Scenario(model.configspace, deterministic=True, n_trials=1000)
+    scenario = Scenario(model.configspace, deterministic=True, n_trials=500)
 
     # Now we use SMAC to find the best hyperparameters
     smac = HPOFacade(
@@ -110,8 +110,10 @@ if __name__ == "__main__":
     ft = incumbent["ft"] if isinstance(incumbent["ft"], (list, tuple)) else [incumbent["ft"]]
 
     # Convert to torch tensors
-    p2_tensor = torch.Tensor(p2).unsqueeze(0)
-    ft_tensor = torch.Tensor(ft).unsqueeze(0)
+    p2_tensor = torch.tensor([p2], dtype=dtype, device=device)
+    ft_tensor = torch.tensor([ft], dtype=dtype, device=device)
+    print(f"p2_tensor sizes: {p2_tensor.size()}")
+    print(f"ft_tensor sizes: {ft_tensor.size()}")
 
     # Pass the tensors to janus_nlp.vdpNewt
     res = janus_nlp.vdpNewt(p2_tensor, ft_tensor, 1.0e-12, 1.0e-14)

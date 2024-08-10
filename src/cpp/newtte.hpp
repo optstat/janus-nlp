@@ -24,7 +24,9 @@ namespace janus
         auto xold = x.clone();
 
         auto f = func(x, params);
+
         auto jac  = jacfunc(x, params);
+
         auto J = Jfunc(f);
         auto fold = f.clone();
         auto Jold = J.clone();

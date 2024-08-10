@@ -35,6 +35,11 @@ def get_extensions():
             "-O3" if not debug_mode else "-O0",
         ],
     }
+
+    # Remove any empty strings from the compiler arguments
+    extra_compile_args["cxx"] = [arg for arg in extra_compile_args["cxx"] if arg]
+    extra_compile_args["nvcc"] = [arg for arg in extra_compile_args["nvcc"] if arg]
+
     if debug_mode:
         extra_compile_args["cxx"].append("-g")
         extra_compile_args["nvcc"].append("-g")
