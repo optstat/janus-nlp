@@ -13,10 +13,10 @@ device = torch.device("cpu")
 dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
-p20min, p20max = -100.0, 100.0
-ftmin, ftmax   = 0.1, 2.0
-x1f, x2f       = 2.0, -0.1
-x10, x20       = 1.0,  2.0
+p20min, p20max = -1000.0, 1000.0
+ftmin, ftmax   = 0.1, 3.0
+x1f, x2f       = -1.9,  -16.0
+x10, x20       = 1.5,  1.0
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -44,8 +44,8 @@ class VDPTargetFunction:
     @property
     def configspace(self) -> ConfigurationSpace:
         cs = ConfigurationSpace(seed=0)
-        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=14.0615048181484)
-        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=0.6845769013836)
+        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=676.1904)
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=1.0725)
         cs.add_hyperparameters([p2, ft])
 
         return cs

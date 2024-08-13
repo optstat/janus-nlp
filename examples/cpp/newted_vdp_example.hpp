@@ -36,14 +36,18 @@ namespace janus
          */
         using Slice = torch::indexing::Slice;
         // Global parameters for simplicity
-        double W = 0.01;
-        double mu = 1.0;
+        double W = 1.0;
+        double mu = 4.0;
         double alpha = 1.0;
+        double u1min = -2.0;
+        double u1max = 2.0;
         torch::Tensor x1f = torch::tensor({-1.0}, {torch::kFloat64});
         torch::Tensor x2f = torch::tensor({-1.0}, {torch::kFloat64});
         torch::Tensor x10 = torch::tensor({1.0}, {torch::kFloat64});
         torch::Tensor x20 = torch::tensor({1.0}, {torch::kFloat64});
-        int MaxNbrStep = 10000;
+        int MaxNbrStep = 100000;
+        double umin = 0.01;
+        double umax = 10.0;
         // Guesses for the initial values of the Lagrange multipliers
         /**
          * In this problem setup the Hamiltonian has form
@@ -89,7 +93,7 @@ namespace janus
           return sign_x * exp_abs_x;
         }
 
-        torch::Tensor calc_control(const torch::Tensor& x, torch::Tensor& p)
+        std::tuple<torch::Tensor, torch::Tensor> calc_control(const torch::Tensor& x, torch::Tensor& p)
         {
             auto p1 = p.index({Slice(), Slice(0, 1)});
             auto p2 = p.index({Slice(), Slice(1, 2)});
@@ -97,17 +101,44 @@ namespace janus
             auto x2 = x.index({Slice(), Slice(1, 2)});
             // We have to solve
             //auto p2 = p2p.sloginv();
-            auto ustar = (-p2*((1-x1*x1)*x2)-x1)/W;
-            auto m = ustar < 0.0;
+            auto u1star = -p2/W;
+            auto m1 = u1star < u1min;
+            auto m2 = u1star > u1max;
+            if ( m1.any().item<bool>())
+            {
+              u1star.index_put_({m1}, u1min);
+            }
+            if ( m2.any().item<bool>())
+            {
+              u1star.index_put_({m2}, u1max);
+            }
+            auto u2star = (-p2*(1-x1*x1)*x2)/W;
+            auto m = u2star < umin;
             if ( m.any().item<bool>())
             {
-              ustar.index_put_({m}, 0.0);
+              u2star.index_put_({m}, umin);
             }
+            m = u2star > umax;
+            if ( m.any().item<bool>())
+            {
+              u2star.index_put_({m}, umax);
+            }
+            auto nan_mask = torch::isnan(u2star);
+            auto inf_mask = torch::isinf(u2star);
+            auto comb_mask = nan_mask | inf_mask;
+            
+            if ( comb_mask.any().item<bool>())
+            {
+              auto one = torch::ones_like(p1.index({comb_mask}));
+              u2star.index_put_({comb_mask}, one*1.0e6);
+            }
+            
+            
             //std::cerr << "Control = " << res << std::endl;
-            return ustar;
+            return std::make_tuple(u1star, u2star);
         }
 
-        TensorDual calc_control(const TensorDual& x, TensorDual& p)
+        std::tuple<TensorDual, TensorDual> calc_control_dual(const TensorDual& x, TensorDual& p)
         {
             auto p1 = p.index({Slice(), Slice(0, 1)});
             auto p2 = p.index({Slice(), Slice(1, 2)});
@@ -115,14 +146,44 @@ namespace janus
             auto x2 = x.index({Slice(), Slice(1, 2)});
             // We have to solve
             //auto p2 = p2p.sloginv();
-            auto ustar = (-p2*((1-x1*x1)*x2-x1))/W;
-            auto m = ustar < 0.01;
+            auto u1star = -p2/W;
+            auto m1 = u1star < u1min;
+            auto m2 = u1star > u1max;
+            if ( m1.any().item<bool>())
+            {
+              auto one = TensorDual::ones_like(p1.index(m1));
+              u1star.index_put_({m1}, u1min*one);
+            }
+            if ( m2.any().item<bool>())
+            {
+              auto one = TensorDual::ones_like(p1.index(m2));
+              u1star.index_put_({m2}, u1max*one);
+            }
+
+            auto u2star = (-p2*((1-x1*x1)*x2))/W;
+            //auto u2star = TensorDual::ones_like(p1)*mu;
+            auto m = u2star < umin;
             if ( m.any().item<bool>())
             {
-              ustar.index_put_({m}, 0.01);
+              u2star.index_put_({m}, umin);
             }
+            m = u2star > umax;
+            if ( m.any().item<bool>())
+            {
+              u2star.index_put_({m}, umax);
+            }
+            auto nan_mask = torch::isnan(u2star.r);
+            auto inf_mask = torch::isinf(u2star.r);
+            auto comb_mask = nan_mask | inf_mask;
+            
+            if ( comb_mask.any().item<bool>())
+            {
+              auto one = TensorDual::ones_like(p1.index(comb_mask));
+              u2star.index_put_({comb_mask}, one*1.0e6);
+            }
+
             //std::cerr << "Control = " << res << std::endl;
-            return ustar;
+            return std::make_tuple(u1star, u2star);
         }
 
 
@@ -140,12 +201,12 @@ namespace janus
           //Remove the control from the computational graph
           auto xc = x.clone().detach().requires_grad_(false);
           auto pc = p.clone().detach().requires_grad_(false);
-          auto u = calc_control(xc, pc);
+          auto [u1, u2] = calc_control(xc, pc);
           //std::cerr << "Control = " << u << std::endl;
 
           //auto p1 = -(p2 *u*((1 - x1 * x1) * x2 - x1 / alpha) + W * u * u / 2 + 1.0/alpha)/x2;
           //This is a minimum time Hamiltonian
-          auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0;
+          auto H = p1*x2+p2*(u2*((1 - x1 * x1) * x2) - x1+u1)+0.5*W*(u1*u1+u2*u2)+ 1.0;
           //std::cerr << "H=" << H << std::endl;
           //std::cerr << "p1=" << p1 << std::endl;
           //std::cerr << "p2=" << p2 << std::endl;
@@ -179,16 +240,16 @@ namespace janus
           //auto dynsv = evalDynsDual<double>(y, W, hamiltonian);
           auto x = y.index({Slice(), Slice(2, 4)});
           auto p = y.index({Slice(), Slice(0, 2)});
-          auto ustar = calc_control(x.r, p.r);
+          auto [u1star, u2star] = calc_control(x.r, p.r);
           auto x2 = x.index({Slice(), Slice(1,2)});
           auto x1 = x.index({Slice(), Slice(0,1)});
           auto p2 = p.index({Slice(), Slice(1,2)});
           auto p1 = p.index({Slice(), Slice(0,1)});
           //p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0
           auto dx1dt = x2;
-          auto dx2dt = ustar*((1-x1*x1)*x2)-x1;
-          auto dp1dt = p2*(ustar*(-2*x1*x2)-1);
-          auto dp2dt = p1+p2*ustar*(1-x1*x1);
+          auto dx2dt = u2star*((1-x1*x1)*x2)-x1+u1star;
+          auto dp1dt = p2*u2star*(-2*x1*x2-1);
+          auto dp2dt = p1+p2*u2star*(1-x1*x1);
           auto real_dyns = TensorDual::cat({dp1dt, dp2dt, dx1dt, dx2dt});
 
 
@@ -206,7 +267,7 @@ namespace janus
           //return jacv;
           auto x = y.index({Slice(), Slice(2, 4)});
           auto p = y.index({Slice(), Slice(0, 2)});
-          auto ustar = calc_control(x.r, p.r);
+          auto [u1star, u2star] = calc_control(x.r, p.r);
           auto x2 = x.index({Slice(), Slice(1,2)});
           auto x1 = x.index({Slice(), Slice(0,1)});
           auto p2 = p.index({Slice(), Slice(1,2)});
@@ -214,19 +275,19 @@ namespace janus
           auto jac = TensorMatDual(torch::zeros({y.r.size(0), 4, 4}, torch::kFloat64),
                                     torch::zeros({y.r.size(0), 4, 4, y.d.size(2)}, torch::kFloat64));
           auto one = TensorDual::ones_like(x1);
-          //p2*(ustar*(-2*x1*x2)-1)
-          jac.index_put_({Slice(), Slice(0,1), 1}, ustar*(-2*x1*x2)-1.0);
-          jac.index_put_({Slice(), Slice(0,1), 2}, -p2*ustar*2*x2);
-          jac.index_put_({Slice(), Slice(0,1), 3}, -p2*ustar*2*x1);
-          //p1+p2*ustar*(1-x1*x1)
+          //p2*u2star*(-2*x1*x2-1);
+          jac.index_put_({Slice(), Slice(0,1), 1}, u2star*((-2*x1*x2)-1.0));
+          jac.index_put_({Slice(), Slice(0,1), 2}, -p2*u2star*2*x2);
+          jac.index_put_({Slice(), Slice(0,1), 3}, -p2*u2star*2*x1);
+          //p1+p2*u2star*(1-x1*x1);
           jac.index_put_({Slice(), Slice(0, 1),0}, one);
-          jac.index_put_({Slice(), Slice(0, 1),1}, ustar*(1-x1*x1));
-          jac.index_put_({Slice(), Slice(0, 1),2}, p2*ustar*(-2*x1));  
+          jac.index_put_({Slice(), Slice(0, 1),1}, u2star*(1-x1*x1));
+          jac.index_put_({Slice(), Slice(0, 1),2}, p2*u2star*(-2*x1));  
           //x2;
           jac.index_put_({Slice(), Slice(2,3), 3}, one);
-          //ustar*((1-x1*x1)*x2)-x1;
-          jac.index_put_({Slice(), Slice(3,4), 2}, ustar*(-2*x1*x2)-1.0);
-          jac.index_put_({Slice(), Slice(3,4), 3}, ustar*((1-x1*x1))); 
+          //u2star*((1-x1*x1)*x2)-x1+u1star
+          jac.index_put_({Slice(), Slice(3,4), 2}, u2star*(-2*x1*x2)-1.0);
+          jac.index_put_({Slice(), Slice(3,4), 3}, u2star*((1-x1*x1))); 
           return jac;
         }
         
@@ -241,13 +302,24 @@ namespace janus
           auto y = torch::cat({p10, p20, x10t, x20t}, 1);
           auto p = torch::cat({p10, p20}, 1);
           auto x = torch::cat({x10t, x20t}, 1);
-          auto ustar = calc_control(x, p);
-          std::cerr << "ustar=" << ustar << std::endl;
+          auto [u1star, u2star] = calc_control(x, p);
+          std::cerr << "u1star=" << u1star << std::endl;
+          std::cerr << "u2star=" << u2star << std::endl;
           std::cerr << "x10t=" << x10t << std::endl;
           std::cerr << "x20t=" << x20t << std::endl;
           std::cerr << "mu=" << mu << std::endl;
           //auto H = p1*x2+p2*(u*((1 - x1 * x1) * x2) - x1)+0.5*W*u*u+ 1.0;
-          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t) - x10t)+0.5*W*ustar*ustar+1.0)/x20t;
+          p10 = -(p20*(u2star*((1 - x10t * x10t) * x20t) - x10t+u1star)+
+                  0.5*W*(u1star*u1star+u2star*u2star)+
+                  1.0
+                 )/x20t;
+          //We have to account for situations where p10 is very large because x20t is very small
+          auto m_nan =torch::isnan(p10) | torch::isinf(p10);
+          if ( m_nan.any().item<bool>())
+          {
+            auto one = torch::ones_like(p10.index({m_nan}));
+            p10.index_put_({m_nan}, 1.0e6*one);
+          }
           //std::cerr << "p10p_sloginv=" << p10p_sloginv << std::endl;
           //auto res = slog(p10p_sloginv);
           //std::cerr << "p10=" << res << std::endl;
@@ -264,8 +336,12 @@ namespace janus
           auto p = TensorDual::cat({p10, p20});
           auto x = TensorDual::cat({x10t, x20t});
           //We don't need the sensitivities of the control just the real part
-          auto ustar = calc_control(x.r, p.r);
-          p10 = -(p20*(ustar*((1 - x10t * x10t) * x20t) - x10t)+0.5*W*ustar*ustar+ 1.0)/x20t;
+          auto [u1star,u2star] = calc_control(x.r, p.r);
+          p10 = -(p20*(u2star*((1 - x10t * x10t) * x20t) - x10t+u1star)+
+                  0.5*W*(u1star*u1star+u2star*u2star)+
+                  1.0
+                 )/x20t;
+
           //std::cerr << "p10p_sloginv=" << p10p_sloginv << std::endl;
           //auto res = slog(p10p_sloginv);
           //std::cerr << "p10=" << res << std::endl;
@@ -586,7 +662,7 @@ namespace janus
           params.index_put_({0, 0}, 1.0e-3); //rtol
           params.index_put_({0, 1}, 1.0e-6); //atol
           auto res = propagate(x, params); 
-          return 100*Jfunc(res)+ft;
+          return Jfunc(res);
 
         }
 
