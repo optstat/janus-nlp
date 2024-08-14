@@ -21,12 +21,6 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("set_x0", &janus::nlp::examples::vdp::set_x0, "Set the initial state for the VDPC example");
     m.def("set_xf", &janus::nlp::examples::vdp::set_xf, "Set the final state for the VDPC example");
     m.def("set_mu", &janus::nlp::examples::vdp::set_mu, "Set the regularization weight for the VDPC example");
-    m.def("calc_p10_tensor", 
-          static_cast<torch::Tensor (*)(const torch::Tensor &)>(&janus::nlp::examples::vdp::calc_p10), 
-          "Calculate the initial guess for the first Lagrange multiplier with torch::Tensor");
-    m.def("calc_p10_tensor_dual", 
-          static_cast<TensorDual (*)(const TensorDual &)>(&janus::nlp::examples::vdp::calc_p10), 
-          "Calculate the initial guess for the first Lagrange multiplier with TensorDual");
     m.def("vdp_solve", &janus::nlp::examples::vdp::vdp_solve, "Solve the VDPC example");
     m.def("vdp_solve_traj", &janus::nlp::examples::vdp::solve_traj, "Generate costate and state trajectories");
     m.def("vdpNewt", &janus::nlp::examples::vdp::vdpNewt, "Newton method for the VDPC example");

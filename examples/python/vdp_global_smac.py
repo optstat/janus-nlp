@@ -1,6 +1,7 @@
 import torch
 import janus_nlp
 import numpy as np
+import smac
 from smac import HyperparameterOptimizationFacade as HPOFacade
 from smac import Scenario, RunHistory
 from ConfigSpace import Configuration, ConfigurationSpace, UniformFloatHyperparameter 
@@ -14,9 +15,9 @@ dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
 p20min, p20max = -1000.0, 1000.0
-ftmin, ftmax   = 0.1, 3.0
-x1f, x2f       = -1.9,  -16.0
-x10, x20       = 1.5,  1.0
+ftmin, ftmax   = 0.1, 25.0
+x1f, x2f       = -1.0,  -20.0
+x10, x20       = 2.0,  0.0
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -44,8 +45,8 @@ class VDPTargetFunction:
     @property
     def configspace(self) -> ConfigurationSpace:
         cs = ConfigurationSpace(seed=0)
-        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=676.1904)
-        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=1.0725)
+        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=0.0)
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=1.0)
         cs.add_hyperparameters([p2, ft])
 
         return cs
@@ -83,15 +84,20 @@ def plot(runhistory: RunHistory, incumbent: Configuration) -> None:
 
 if __name__ == "__main__":
     model = VDPTargetFunction()
-
     # Scenario object specifying the optimization "environment"
-    scenario = Scenario(model.configspace, deterministic=True, n_trials=500)
+    scenario = Scenario(model.configspace, 
+                        deterministic=True, 
+                        n_trials=500)  # Optionally, increase the number of initial configurations)
+    
+    initial_design = smac.initial_design.sobol_design.SobolInitialDesign(scenario, n_configs=100)  # 20 initial points
+
 
     # Now we use SMAC to find the best hyperparameters
     smac = HPOFacade(
         scenario,
         model.train,  # We pass the target function here
         overwrite=True,  # Overrides any previous results that are found that are inconsistent with the meta-data
+        initial_design=initial_design,
     )
 
     incumbent = smac.optimize()
