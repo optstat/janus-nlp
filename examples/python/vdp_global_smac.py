@@ -14,10 +14,11 @@ device = torch.device("cpu")
 dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
-p20min, p20max = -1000.0, 1000.0
-ftmin, ftmax   = 0.1, 25.0
-x1f, x2f       = -1.0,  -20.0
-x10, x20       = 2.0,  0.0
+p10min, p10max = -1.0, 1.0
+p20min, p20max = -1.0, 1.0
+ftmin, ftmax   = 0.1, 8.0
+x1f, x2f       = 1.8,  1.5
+x10, x20       = 1.8,  1.5
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -27,10 +28,12 @@ def denormalize(X, bounds):
     return X * (bounds[1] - bounds[0]) + bounds[0]
 
 def vdp(x):
-    p2 = x[:, 0:1]
+    p1 = x[:, 0:1]
+    print (f"p1: {p1}")
+    p2 = x[:, 1:2]
     print(f"p2: {p2}")    
 
-    ft = x[:, 1:2]    
+    ft = x[:, 2:3]    
     print(f"ft: {ft}")
     x10t = torch.ones_like(p2) * x10
     x20t = torch.ones_like(p2) * x20
@@ -45,16 +48,18 @@ class VDPTargetFunction:
     @property
     def configspace(self) -> ConfigurationSpace:
         cs = ConfigurationSpace(seed=0)
+        p1 = UniformFloatHyperparameter("p1", lower=p10min, upper=p10max, default_value=0.0)
         p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=0.0)
-        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=1.0)
-        cs.add_hyperparameters([p2, ft])
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=7.0)
+        cs.add_hyperparameters([p1, p2, ft])
 
         return cs
 
     def train(self, config: Configuration, seed: int = 0):
         """Target function to minimize."""
 
-        x = torch.tensor([config['p2'], config['ft']], dtype=dtype, device=device).unsqueeze(0)
+        x = torch.tensor([config['p1'], config['p2'], config['ft']], dtype=dtype, device=device).unsqueeze(0)
+        assert p10min <= config['p1'] <= p10max, "p1 out of bounds"
         assert p20min <= config['p2'] <= p20max, "p2 out of bounds"
         assert ftmin <= config['ft'] <= ftmax, "ft out of bounds"
 
@@ -87,9 +92,9 @@ if __name__ == "__main__":
     # Scenario object specifying the optimization "environment"
     scenario = Scenario(model.configspace, 
                         deterministic=True, 
-                        n_trials=500)  # Optionally, increase the number of initial configurations)
+                        n_trials=10)  # Optionally, increase the number of initial configurations)
     
-    initial_design = smac.initial_design.sobol_design.SobolInitialDesign(scenario, n_configs=100)  # 20 initial points
+    initial_design = smac.initial_design.sobol_design.SobolInitialDesign(scenario, n_configs=10)  # 20 initial points
 
 
     # Now we use SMAC to find the best hyperparameters
@@ -112,17 +117,20 @@ if __name__ == "__main__":
 
     #Now pass this to the Newton method to calculate the precise value
     # Ensure that incumbent["p2"] and incumbent["ft"] are sequences
+    p1 = incumbent["p1"] if isinstance(incumbent["p1"], (list, tuple)) else [incumbent["p1"]]
     p2 = incumbent["p2"] if isinstance(incumbent["p2"], (list, tuple)) else [incumbent["p2"]]
     ft = incumbent["ft"] if isinstance(incumbent["ft"], (list, tuple)) else [incumbent["ft"]]
 
     # Convert to torch tensors
+    p1_tensor = torch.tensor([p1], dtype=dtype, device=device)
     p2_tensor = torch.tensor([p2], dtype=dtype, device=device)
     ft_tensor = torch.tensor([ft], dtype=dtype, device=device)
+    print(f"p1_tensor sizes: {p1_tensor.size()}")
     print(f"p2_tensor sizes: {p2_tensor.size()}")
     print(f"ft_tensor sizes: {ft_tensor.size()}")
 
     # Pass the tensors to janus_nlp.vdpNewt
-    res = janus_nlp.vdpNewt(p2_tensor, ft_tensor, 1.0e-12, 1.0e-14)
+    res = janus_nlp.vdpNewt(p1_tensor, p2_tensor, ft_tensor, 1.0e-12, 1.0e-14)
     print(f"Optimal solution: {res}")
 
     # Let's plot it too

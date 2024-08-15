@@ -46,8 +46,8 @@ namespace janus
         torch::Tensor x10 = torch::tensor({1.0}, {torch::kFloat64});
         torch::Tensor x20 = torch::tensor({1.0}, {torch::kFloat64});
         int MaxNbrStep = 100000;
-        double umin = 1.0;
-        double umax = 100.0;
+        double umin = 0.01;
+        double umax = 4.0;
         // Guesses for the initial values of the Lagrange multipliers
         /**
          * In this problem setup the Hamiltonian has form
@@ -102,7 +102,7 @@ namespace janus
             // We have to solve
             //auto p2 = p2p.sloginv();
             auto one = torch::ones_like(p1);
-            auto ustar = (-one-p1*x2+p2)/(p2*(1-x1*x1)*x2);
+            auto ustar = ((-one-p1*x2)/p2+x1)/((1-x1*x1)*x2);
             auto m1 = ustar < umin;
             auto m2 = ustar > umax;
             if ( m1.any().item<bool>())
@@ -131,7 +131,7 @@ namespace janus
           auto xc = x.clone().detach().requires_grad_(false);
           auto pc = p.clone().detach().requires_grad_(false);
           auto u = calc_control(pc, xc);
-          //std::cerr << "Control = " << u << std::endl;
+          std::cerr << "Control = " << u << std::endl;
 
           //auto p1 = -(p2 *u*((1 - x1 * x1) * x2 - x1 / alpha) + W * u * u / 2 + 1.0/alpha)/x2;
           //This is a minimum time Hamiltonian
@@ -192,6 +192,7 @@ namespace janus
           auto x = y.index({Slice(), Slice(2, 4)});
           auto p = y.index({Slice(), Slice(0, 2)});
           auto ustar = calc_control(p.r, x.r);
+          //std::cerr << "Control = " << ustar << std::endl;
           auto x2 = x.index({Slice(), Slice(1,2)});
           auto x1 = x.index({Slice(), Slice(0,1)});
           auto p2 = p.index({Slice(), Slice(1,2)});
@@ -525,7 +526,7 @@ namespace janus
           // std::cerr << r.Last << "\n";
           // std::cerr << "r.h=";
           // janus::print_dual(r.h);
-          torch::Tensor jacVal = torch::zeros({M, 2, 2}, torch::kFloat64);
+          torch::Tensor jacVal = torch::zeros({M, 3, 3}, torch::kFloat64);
 
           if (rescode != 0)
           {
@@ -546,10 +547,17 @@ namespace janus
           std::cerr << "x2delta=";
           janus::print_dual(x2delta);
           auto Hf = hamiltonian(pfp, xf);
-          jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(), 0, 1}));
-          jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(), 0, -1}));
+          jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(), 0, 0}));
+          jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(), 0, 1}));
+          jacVal.index_put_({Slice(), 0, 2}, x1delta.d.index({Slice(), 0, -1}));
+
           jacVal.index_put_({Slice(), 1, 0}, x2delta.d.index({Slice(), 0, 1}));
-          jacVal.index_put_({Slice(), 1, 1}, x2delta.d.index({Slice(), 0, -1}));
+          jacVal.index_put_({Slice(), 1, 1}, x2delta.d.index({Slice(), 0, 1}));
+          jacVal.index_put_({Slice(), 1, 2}, x2delta.d.index({Slice(), 0, 1}));
+
+          jacVal.index_put_({Slice(), 2, 0}, Hf.d.index({Slice(), 0, 0}));
+          jacVal.index_put_({Slice(), 2, 1}, Hf.d.index({Slice(), 0, 1}));
+          jacVal.index_put_({Slice(), 2, 2}, Hf.d.index({Slice(), 0, -1}));
 
 
           std::cerr << "jacobian result=";
@@ -566,19 +574,6 @@ namespace janus
           params.index_put_({0, 0}, 1.0e-3); //rtol
           params.index_put_({0, 1}, 1.0e-6); //atol
           auto res = propagate(x, params);
-          //std::cerr << "res=";
-          //janus::print_tensor(res);
-          //std::cerr << "x2f=";
-          //janus::print_tensor(x2f);
-          //std::cerr << "x1f=";
-          //janus::print_tensor(x1f);
-          auto m = x2f.abs().squeeze(1) > x1f.abs().squeeze(1);
-          //std::cerr << "m=";
-          //janus::print_tensor(m);
-          auto f = torch::ones_like(res);
-          f.index_put_({m}, x2f.index({m})/x1f.index({m}));
-          f.index_put_({~m}, x1f.index({~m})/x2f.index({~m}));
-          res = res * f;
           return Jfunc(res);
 
         }
@@ -590,7 +585,8 @@ namespace janus
          * sensitivity and global optimization techniques to solve the problem
          */
 
-        std::tuple<torch::Tensor, torch::Tensor> vdpNewt(torch::Tensor& p20p, 
+        std::tuple<torch::Tensor, torch::Tensor> vdpNewt(torch::Tensor& p10p,
+                                                         torch::Tensor& p20p, 
                                                          torch::Tensor& ft, 
                                                          double rtol=1.0e-3,
                                                          double atol=1.0e-6)
@@ -602,18 +598,15 @@ namespace janus
           py::gil_scoped_release no_gil;
 
           int M = 1;     // Number of samples
-          int N = 2;     // Number of unknonwns
+          int N = 3;     // Number of unknonwns
           int D = 5;     // Dimension of the dual numbers [p1, p2, x1, x2, tf]
           // The problem has three unknowns p1 p2 and final time tf
           /*
           -28.8603   1.4887   6.1901*/
 
           auto device = torch::kCPU;
-    
-          std::cerr << "p20p=" << p20p << "\n";
-          std::cerr << "ft=" << ft << "\n";
-          torch::Tensor y0 = torch::cat({p20p, ft}, 1).to(device);
-          std::cerr << "y0=" << y0 << "\n";
+          
+          torch::Tensor y0 = torch::cat({p10p, p20p, ft}, 1).to(device);
           
           auto params = torch::ones({M, 2}, torch::kFloat64).to(device);
           params.index_put_({Slice(), Slice(0,1)}, rtol); //rtol
