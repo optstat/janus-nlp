@@ -6,6 +6,7 @@
 #include "../../examples/cpp/lnsrchte_example.hpp"
 #include "../../examples/cpp/newted_control_example.hpp"
 #include "../../examples/cpp/newted_vdp_example.hpp"
+#include "../../examples/cpp/mint_vdp_example.hpp"
 
 namespace py = pybind11;
 
@@ -24,4 +25,8 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("vdp_solve", &janus::nlp::examples::vdp::vdp_solve, "Solve the VDPC example");
     m.def("vdp_solve_traj", &janus::nlp::examples::vdp::solve_traj, "Generate costate and state trajectories");
     m.def("vdpNewt", &janus::nlp::examples::vdp::vdpNewt, "Newton method for the VDPC example");
+    m.def("set_mint_xf", &janus::nlp::examples::vdp::mint::set_xf, "Set the final point for the mint example");
+    m.def("set_mint_x0", &janus::nlp::examples::vdp::mint::set_x0, "Set the initial point for the mint example");
+    m.def("mint_vdp_solve", &janus::nlp::examples::vdp::mint::mint_vdp_solve, "Solve the VDPC example");
+
 }
