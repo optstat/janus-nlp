@@ -18,9 +18,9 @@ device = torch.device("cpu")
 dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
-p10min, p10max = 0.0, 1.0 #Currently this is a dummy variable
-p20min, p20max = -1000.0, 1000.0
-ftmin, ftmax   = 0.1, 2.0
+p10min, p10max = -10.0, 10.0 #Currently this is a dummy variable
+p20min, p20max = -10.0, 10.0
+ftmin, ftmax   = 0.01, 0.1
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -29,40 +29,30 @@ def normalize(X, bounds):
 def denormalize(X, bounds):
     return X * (bounds[1] - bounds[0]) + bounds[0]
 
-def limit_cycle_pts(mu, dt=1.0):
-
-  # Define the Van der Pol oscillator
-  def van_der_pol(t, y, mu):
-    x1, x2 = y
-    dxdt = x2
-    dx_dotdt = mu * (1 - x1**2) * x2 - x1
-    return [dxdt, dx_dotdt]
-
-  initial_time = 0
-  initial_conditions = [1, 0]  # Initial conditions
-
-  # First integration period
-  first_period = 4 * np.pi
-  t_span_initial = (initial_time, initial_time + first_period)
-
-  # Solve the system for the first period
-  sol_initial = solve_ivp(van_der_pol, t_span_initial, initial_conditions, args=(mu,), method='Radau', dense_output=True)
-
-  # Evaluate the solution at the end of the first period
-  end_point = sol_initial.sol(t_span_initial[1])
-
-  # Integrate for an additional 1 unit of time starting from the end point
-  additional_time = dt
-  t_span_additional = (t_span_initial[1], t_span_initial[1] + additional_time)
-
-  # Solve the system for the additional period
-  sol_additional = solve_ivp(van_der_pol, t_span_additional, end_point, args=(mu,), method='Radau', dense_output=True)
-
-  # Evaluate the solution at the end of the additional period
-  second_end_point = sol_additional.sol(t_span_additional[1])
-
-  return end_point, second_end_point
-
+def propagate_state(mu, dt=1.0):
+    #          std::tuple<torch::Tensor, torch::Tensor> propagate_state(const torch::Tensor &mu,
+    #                                                         const torch::Tensor &x1,
+    #                                                         const torch::Tensor &x2,
+    #                                                         const torch::Tensor &ft,
+    #                                                         const torch::Tensor &params)
+    x10t = torch.tensor([[2.0]], dtype=dtype, device=device)
+    x20t = torch.tensor([[0.0]], dtype=dtype, device=device)
+    mut = torch.tensor([[mu]], dtype=dtype, device=device).squeeze()
+    paramst = torch.tensor([1.0e-12, 1.0e-16], dtype=dtype, device=device)
+    #Propagate for a long time to get the limit cycle
+    resi = janus_nlp.propagate_state(mut, 
+                                     x10t, 
+                                     x20t, 
+                                     torch.tensor([[10.0]], dtype=dtype, device=device), 
+                                     paramst)
+    x1it = resi[0]
+    x2it = resi[1]
+    dtt = torch.tensor([[dt]], dtype=dtype, device=device)
+    #get the path to the limit cycle
+    resf = janus_nlp.propagate_state(mut, x1it, x2it, dtt, paramst)
+    x1ft = resf[0]
+    x2ft = resf[1]
+    return [[x1it, x2it], [x1ft, x2ft]]
 
 def vdp(x, x10, x1f, x20, x2f):
     p1 = x[:, 0:1]
@@ -81,16 +71,62 @@ def vdp(x, x10, x1f, x20, x2f):
     errors = janus_nlp.vdp_solve(x)    
     return errors
 
+
+class VDPMintIpopt(cyipopt.Problem):
+    def __init__(self, x10, x1f, x20, x2f):
+        self.x10 = x10
+        self.x1f = x1f
+        self.x20 = x20
+        self.x2f = x2f
+        self.x10t = torch.tensor([[self.x10]], dtype=dtype, device=device)
+        self.x20t = torch.tensor([[self.x20]], dtype=dtype, device=device)
+        self.x1ft = torch.tensor([[self.x1f]], dtype=dtype, device=device)
+        self.x2ft = torch.tensor([[self.x2f]], dtype=dtype, device=device)
+
+
+
+    def objective(self, x):
+        ft = x[2]
+        return ft
+    
+    def gradient(self, x):
+        grad = np.zeros(3)
+        grad[2] = 1.0
+        return grad
+    
+    def constraints(self, x):
+        p1 = x[0]
+        p2 = x[1]
+        ft = x[2]
+        x = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
+        janus_nlp.set_mint_x0(self.x10t, self.x20t)
+        janus_nlp.set_mint_xf(self.x1ft, self.x2ft)
+        errors = janus_nlp.mint_vdp_solve(x).squeeze().flatten().numpy()
+        print(f"Errors: {errors}")
+        return errors
+    
+    def jacobian(self, x):
+        p1 = x[0]
+        p2 = x[1]
+        ft = x[2]
+        x = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
+        janus_nlp.set_mint_x0(self.x10t, self.x20t)
+        janus_nlp.set_mint_xf(self.x1ft, self.x2ft)
+
+        jac = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
+        print(f"Jacobian: {jac}")
+        return jac
+
 class VDPTargetFunction:
     @property
     def configspace(self) -> ConfigurationSpace:
         cs = ConfigurationSpace(seed=0)
         p1 = UniformFloatHyperparameter("p1", lower=p10min, upper=p10max, default_value=0.0)
-        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=-20)
-        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=1.0)
+        p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=0.0)
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=0.1)
         cs.add_hyperparameters([p1, p2, ft])
-
         return cs
+    
     def init(self, x10, x1f, x20, x2f):
         self.x10 = x10
         self.x1f = x1f
@@ -105,8 +141,34 @@ class VDPTargetFunction:
         assert p20min <= config['p2'] <= p20max, "p2 out of bounds"
         assert ftmin <= config['ft'] <= ftmax, "ft out of bounds"
 
-        y = vdp(x, self.x10, self.x1f, self.x20, self.x2f)
-        return float(y.item())
+        #We will use ipopt to solve the optimization problem
+        problem = VDPMintIpopt(self.x10, self.x1f, self.x20, self.x2f)
+
+        nlp = cyipopt.Problem(
+            n=3,
+            m=3,
+            problem_obj=problem,
+            lb=[p10min, p20min, ftmin],
+            ub=[p10max, p20max, ftmax],
+            cl=[-0.001, -0.001, -1.0e-6],
+            cu=[ 0.001,  0.001,  1.0e-6]
+        )
+
+        # Set the options
+        nlp.add_option('hessian_approximation', 'limited-memory')  # Enable limited memory BFGS (L-BFGS)
+        nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
+        nlp.add_option('tol', 1e-4)               # Set the tolerance to 10^-4
+        nlp.add_option('print_level', 5)          # Set print level to 5
+        nlp.add_option('max_iter', 100)       # Set the maximum number of iterations to 1000
+        
+        x0 = np.array([config['p1'], config['p2'], config['ft']])
+        x, info = nlp.solve(x0)
+        #Check to see if the optimization was successful
+        res = 1.0e6
+        if info["status"] == 0 or info["status"] == 1:
+            res = VDPMintIpopt.objective(x)
+            
+        return res
 
 def plot(runhistory: RunHistory, incumbent: Configuration) -> None:
     plt.figure()
@@ -130,7 +192,7 @@ def plot(runhistory: RunHistory, incumbent: Configuration) -> None:
     plt.show()
 
 if __name__ == "__main__":
-    start_pt, end_pt = limit_cycle_pts(1.0, 1)
+    start_pt, end_pt = propagate_state(0.1, 0.05)
     print(f"Start point: {start_pt}")
     print(f"End point: {end_pt}")
     x10 = start_pt[0]
