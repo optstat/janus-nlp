@@ -329,10 +329,10 @@ torch::Tensor jac_eval(const torch::Tensor& x, const torch::Tensor& params) {
   jacVal.index_put_({Slice(), 2, 3}, p3delta.d.index({Slice(), 0, -1}));
   
   
-  jacVal.index_put_({Slice(), 3, 0}, Hf.d.index({Slice(), 0,0}));
-  jacVal.index_put_({Slice(), 3, 1}, Hf.d.index({Slice(), 0,1}));
-  jacVal.index_put_({Slice(), 3, 2}, Hf.d.index({Slice(), 0,2}));
-  jacVal.index_put_({Slice(), 3, 3}, Hf.d.index({Slice(), 0,3}));
+  jacVal.index_put_({Slice(), 3, 0}, Hf.d.index({Slice(), 0, 0}));
+  jacVal.index_put_({Slice(), 3, 1}, Hf.d.index({Slice(), 0, 1}));
+  jacVal.index_put_({Slice(), 3, 2}, Hf.d.index({Slice(), 0, 2}));
+  jacVal.index_put_({Slice(), 3, 3}, Hf.d.index({Slice(), 0, -1}));
   std::cerr << "jacobian result=";
   janus::print_tensor(jacVal);
 

@@ -18,8 +18,8 @@ device = torch.device("cpu")
 dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
-p10min, p10max = -10.0, 10.0 #Currently this is a dummy variable
-p20min, p20max = -10.0, 10.0
+p10min, p10max = -1000.0, 1000.0 #Currently this is a dummy variable
+p20min, p20max = -1000.0, 1000.0
 ftmin, ftmax   = 0.01, 0.1
 
 # Define normalization and standardization functions
@@ -113,9 +113,11 @@ class VDPMintIpopt(cyipopt.Problem):
         janus_nlp.set_mint_x0(self.x10t, self.x20t)
         janus_nlp.set_mint_xf(self.x1ft, self.x2ft)
 
-        jac = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
-        print(f"Jacobian: {jac}")
-        return jac
+        jac_dual = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
+        #jac_fd = janus_nlp.mint_jac_eval_fd(x).squeeze().flatten().numpy()
+        #print(f"Jacobian dual: {jac_dual}")
+        #print(f"Jacobian FD: {jac_fd}")
+        return jac_dual
 
 class VDPTargetFunction:
     @property
@@ -160,14 +162,15 @@ class VDPTargetFunction:
         nlp.add_option('tol', 1e-4)               # Set the tolerance to 10^-4
         nlp.add_option('print_level', 5)          # Set print level to 5
         nlp.add_option('max_iter', 100)       # Set the maximum number of iterations to 1000
-        
+        nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
+        nlp.add_option("derivative_test", "first-order")  # Check the gradient
         x0 = np.array([config['p1'], config['p2'], config['ft']])
         x, info = nlp.solve(x0)
         #Check to see if the optimization was successful
         res = 1.0e6
         if info["status"] == 0 or info["status"] == 1:
-            res = VDPMintIpopt.objective(x)
-            
+            res = problem.objective(x)
+        print(f"Optimal solution: {res}")            
         return res
 
 def plot(runhistory: RunHistory, incumbent: Configuration) -> None:

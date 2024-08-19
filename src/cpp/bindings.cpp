@@ -29,5 +29,6 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("set_mint_x0", &janus::nlp::examples::vdp::mint::set_x0, "Set the initial point for the mint example");
     m.def("mint_vdp_solve", &janus::nlp::examples::vdp::mint::mint_vdp_solve, "Solve the VDPC example");
     m.def("mint_jac_eval", &janus::nlp::examples::vdp::mint::mint_jac_eval, "Evaluate the Jacobian of the mint example");
+    m.def("mint_jac_eval_fd", &janus::nlp::examples::vdp::mint::mint_jac_eval_fd, "Evaluate the Jacobian of the mint example");
     m.def("propagate_state", &janus::nlp::examples::vdp::mint::propagate_state, "Propagate the state of the mint example");
 }
