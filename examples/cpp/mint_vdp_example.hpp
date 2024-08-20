@@ -186,7 +186,7 @@ namespace janus
             auto x1 = x.index({Slice(), Slice(0, 1)});
             auto p2 = p.index({Slice(), Slice(1, 2)});
             auto p1 = p.index({Slice(), Slice(0, 1)});
-            auto ustar = calc_control(p1.r, p2.r, x.r);
+            auto ustar = calc_control(p1, p2, x);
 
             auto dx1dt = x2;
             auto dx2dt = ustar * ((1 - x1 * x1) * x2) - x1;
@@ -243,7 +243,7 @@ namespace janus
             auto x1 = x.index({Slice(), Slice(0, 1)});
             auto p1 = p.index({Slice(), Slice(0, 1)});
             auto p2 = p.index({Slice(), Slice(1, 2)});
-            auto ustar = calc_control(p1.r, p2.r, x.r);
+            auto ustar = calc_control(p1, p2, x);
 
             // auto p1 = p.index({Slice(), Slice(0,1)});
 
@@ -569,6 +569,8 @@ namespace janus
             auto x2delta = r.y.index({Slice(), Slice(3, 4)}) - x2f;
             std::cerr << "x2delta=";
             janus::print_dual(x2delta);
+            //Evaluate the Hamiltonian at the next to final point
+
             auto Hf = hamiltonian(pfp, xf);
             jacVal.index_put_({Slice(), 0, 0}, x1delta.d.index({Slice(), 0, 0}));
             jacVal.index_put_({Slice(), 0, 1}, x1delta.d.index({Slice(), 0, 1}));
@@ -582,7 +584,6 @@ namespace janus
             jacVal.index_put_({Slice(), 2, 0}, Hf.d.index({Slice(), 0, 0}));
             jacVal.index_put_({Slice(), 2, 1}, Hf.d.index({Slice(), 0, 1}));
             jacVal.index_put_({Slice(), 2, 2}, Hf.d.index({Slice(), 0, -1}));
-
 
             janus::print_tensor(jacVal);
 

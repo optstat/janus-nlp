@@ -20,7 +20,7 @@ dtype = torch.double #Ensure that we use double precision
 # Define parameter bounds
 p10min, p10max = -1000.0, 1000.0 #Currently this is a dummy variable
 p20min, p20max = -1000.0, 1000.0
-ftmin, ftmax   = 0.01, 0.1
+ftmin, ftmax   = 0.01, 0.2
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -115,7 +115,7 @@ class VDPMintIpopt(cyipopt.Problem):
 
         jac_dual = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
         #jac_fd = janus_nlp.mint_jac_eval_fd(x).squeeze().flatten().numpy()
-        #print(f"Jacobian dual: {jac_dual}")
+        print(f"Jacobian dual: {jac_dual}")
         #print(f"Jacobian FD: {jac_fd}")
         return jac_dual
 
@@ -152,8 +152,8 @@ class VDPTargetFunction:
             problem_obj=problem,
             lb=[p10min, p20min, ftmin],
             ub=[p10max, p20max, ftmax],
-            cl=[-0.001, -0.001, -1.0e-6],
-            cu=[ 0.001,  0.001,  1.0e-6]
+            cl=[-0.01, -0.01, -1.0e-3],
+            cu=[ 0.01,  0.01,  1.0e-3]
         )
 
         # Set the options
@@ -195,7 +195,7 @@ def plot(runhistory: RunHistory, incumbent: Configuration) -> None:
     plt.show()
 
 if __name__ == "__main__":
-    start_pt, end_pt = propagate_state(0.1, 0.05)
+    start_pt, end_pt = propagate_state(0.1, 0.1)
     print(f"Start point: {start_pt}")
     print(f"End point: {end_pt}")
     x10 = start_pt[0]
