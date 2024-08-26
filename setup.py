@@ -28,6 +28,7 @@ def get_extensions():
     extra_compile_args = {
         "cxx": [
             "-O3" if not debug_mode else "-O0",
+            "-g0" if not debug_mode else "-g",
             "-march=native" if not debug_mode else "",
             "-fdiagnostics-color=always",
         ],

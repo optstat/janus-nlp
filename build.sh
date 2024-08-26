@@ -1,5 +1,5 @@
 #!/bin/bash
-export DEBUG=1
+export DEBUG=0
 # Create the virtual environment if it doesn't exist
 if [ ! -d "build/venv" ]; then
     python3 -m venv build/venv

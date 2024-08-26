@@ -7,6 +7,7 @@
 //#include "../../examples/cpp/newted_control_example.hpp"
 //#include "../../examples/cpp/newted_vdp_example.hpp"
 #include "../../examples/cpp/mint_vdp_example.hpp"
+#include "../../examples/cpp/mint_auglang_vdp_example.hpp"
 
 namespace py = pybind11;
 
@@ -30,5 +31,7 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("mint_vdp_solve", &janus::nlp::examples::vdp::mint::mint_vdp_solve, "Solve the VDPC example");
     m.def("mint_jac_eval", &janus::nlp::examples::vdp::mint::mint_jac_eval, "Evaluate the Jacobian of the mint example");
     m.def("mint_jac_eval_fd", &janus::nlp::examples::vdp::mint::mint_jac_eval_fd, "Evaluate the Jacobian of the mint example");
-    m.def("propagate_state", &janus::nlp::examples::vdp::mint::propagate_state, "Propagate the state of the mint example");
+    m.def("mint_set_mu", &janus::nlp::examples::vdp::mint::set_mu, "Set the regularization weight for the mint example");
+    m.def("mint_set_W", &janus::nlp::examples::vdp::mint::set_W, "Set the final state for the mint example");
+    m.def("mint_auglangr_propagate", &janus::nlp::examples::vdp::mint::auglang::mint_auglangr_propagate, "Augmented Lagrangian and its gradients for the mint example");
 }

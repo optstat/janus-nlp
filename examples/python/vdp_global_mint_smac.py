@@ -18,9 +18,10 @@ device = torch.device("cpu")
 dtype = torch.double #Ensure that we use double precision
 
 # Define parameter bounds
-p10min, p10max = -1000.0, 1000.0 #Currently this is a dummy variable
-p20min, p20max = -1000.0, 1000.0
-ftmin, ftmax   = 0.01, 0.2
+p10min, p10max = -0.1, 0.1 #This is largely irrelevant
+p20min, p20max = -0.1, 0.1
+mu = 1.0
+ftmin, ftmax   = 0.1, 10.0# 2*((3.0- 2.0* np.log( 2))*mu + 2*np.pi/mu**(1/3))
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -29,7 +30,7 @@ def normalize(X, bounds):
 def denormalize(X, bounds):
     return X * (bounds[1] - bounds[0]) + bounds[0]
 
-def propagate_state(mu, dt=1.0):
+def propagate_state(dt=1.0):
     #          std::tuple<torch::Tensor, torch::Tensor> propagate_state(const torch::Tensor &mu,
     #                                                         const torch::Tensor &x1,
     #                                                         const torch::Tensor &x2,
@@ -43,7 +44,7 @@ def propagate_state(mu, dt=1.0):
     resi = janus_nlp.propagate_state(mut, 
                                      x10t, 
                                      x20t, 
-                                     torch.tensor([[10.0]], dtype=dtype, device=device), 
+                                     torch.tensor([[2*ftmax]], dtype=dtype, device=device), 
                                      paramst)
     x1it = resi[0]
     x2it = resi[1]
@@ -68,6 +69,7 @@ def vdp(x, x10, x1f, x20, x2f):
     x2ft = torch.ones_like(p2) * x2f
     janus_nlp.set_x0(x10t, x20t)
     janus_nlp.set_xf(x1ft, x2ft)
+    janus_nlp.mint_set_mu(mu)
     errors = janus_nlp.vdp_solve(x)    
     return errors
 
@@ -101,6 +103,7 @@ class VDPMintIpopt(cyipopt.Problem):
         x = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
         janus_nlp.set_mint_x0(self.x10t, self.x20t)
         janus_nlp.set_mint_xf(self.x1ft, self.x2ft)
+        janus_nlp.mint_set_mu(mu)
         errors = janus_nlp.mint_vdp_solve(x).squeeze().flatten().numpy()
         print(f"Errors: {errors}")
         return errors
@@ -112,12 +115,12 @@ class VDPMintIpopt(cyipopt.Problem):
         x = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
         janus_nlp.set_mint_x0(self.x10t, self.x20t)
         janus_nlp.set_mint_xf(self.x1ft, self.x2ft)
-
-        jac_dual = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
-        #jac_fd = janus_nlp.mint_jac_eval_fd(x).squeeze().flatten().numpy()
-        print(f"Jacobian dual: {jac_dual}")
+        janus_nlp.mint_set_mu(mu)
+        #jac_dual = janus_nlp.mint_jac_eval(x).squeeze().flatten().numpy()
+        jac_fd = janus_nlp.mint_jac_eval_fd(x).squeeze().flatten().numpy()
+        #print(f"Jacobian dual: {jac_dual}")
         #print(f"Jacobian FD: {jac_fd}")
-        return jac_dual
+        return jac_fd
 
 class VDPTargetFunction:
     @property
@@ -125,7 +128,7 @@ class VDPTargetFunction:
         cs = ConfigurationSpace(seed=0)
         p1 = UniformFloatHyperparameter("p1", lower=p10min, upper=p10max, default_value=0.0)
         p2 = UniformFloatHyperparameter("p2", lower=p20min, upper=p20max, default_value=0.0)
-        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=0.1)
+        ft = UniformFloatHyperparameter("ft", lower=ftmin, upper=ftmax, default_value=ftmin)
         cs.add_hyperparameters([p1, p2, ft])
         return cs
     
@@ -152,8 +155,8 @@ class VDPTargetFunction:
             problem_obj=problem,
             lb=[p10min, p20min, ftmin],
             ub=[p10max, p20max, ftmax],
-            cl=[-0.01, -0.01, -1.0e-3],
-            cu=[ 0.01,  0.01,  1.0e-3]
+            cl=[-0.001, -0.001, -1.0e-3],
+            cu=[ 0.001,  0.001,  1.0e-3]
         )
 
         # Set the options
@@ -161,7 +164,7 @@ class VDPTargetFunction:
         nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
         nlp.add_option('tol', 1e-4)               # Set the tolerance to 10^-4
         nlp.add_option('print_level', 5)          # Set print level to 5
-        nlp.add_option('max_iter', 100)       # Set the maximum number of iterations to 1000
+        nlp.add_option('max_iter', 1000)       # Set the maximum number of iterations to 1000
         nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
         nlp.add_option("derivative_test", "first-order")  # Check the gradient
         x0 = np.array([config['p1'], config['p2'], config['ft']])
@@ -195,13 +198,18 @@ def plot(runhistory: RunHistory, incumbent: Configuration) -> None:
     plt.show()
 
 if __name__ == "__main__":
-    start_pt, end_pt = propagate_state(0.1, 0.1)
-    print(f"Start point: {start_pt}")
-    print(f"End point: {end_pt}")
-    x10 = start_pt[0]
-    x20 = start_pt[1]
-    x1f = end_pt[0]
-    x2f = end_pt[1]
+    #start_pt, end_pt = propagate_state(10.0)
+    #print(f"Start point: {start_pt}")
+    #print(f"End point: {end_pt}")
+    x10 = 1.0
+    x20 = 5.0 
+    #x1f = end_pt[0]
+    #x2f = end_pt[1]
+    #x10 = 1.0
+    #x20 = 100.0
+    #Set the end point to a specific value
+    x1f = -1.0
+    x2f = -2.0
 
     model = VDPTargetFunction()
     model.init(x10, x1f, x20, x2f) #Set the initial and final points
