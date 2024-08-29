@@ -1,5 +1,6 @@
 #!/bin/bash
-export DEBUG=0
+#Set the debug flag hers
+export DEBUG=1
 # Create the virtual environment if it doesn't exist
 if [ ! -d "build/venv" ]; then
     python3 -m venv build/venv
@@ -9,7 +10,7 @@ fi
 source build/venv/bin/activate
 
 # Install necessary packages
-pip3 install setuptools wheel numpy matplotlib scipy torch smac botorch ax-platform gpytorch scikit-learn joblib dask distributed cyipopt
+pip3 install setuptools wheel numpy matplotlib scipy torch smac botorch ax-platform gpytorch scikit-learn joblib dask distributed cyipopt ipdb
 
 # Download and extract LibTorch
 LIBTORCH_URL="https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-latest.zip"
