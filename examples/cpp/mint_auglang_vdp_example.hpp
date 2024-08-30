@@ -272,7 +272,7 @@ namespace janus
               // The Hamiltonian is zero at the terminal time
               // in principle but this may not be the always the case
               // Now add the augmented Lagrangian term
-              auto f = ft - lambdap.index({Slice(), 0}) * x1delta -
+              auto f = ft- lambdap.index({Slice(), 0}) * x1delta -
                   lambdap.index({Slice(), 1}) * x2delta  +
                   0.5 * mup * (x1delta * x1delta + x2delta * x2delta);
               std::cerr << "f = " << f << std::endl;

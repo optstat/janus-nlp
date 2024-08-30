@@ -102,14 +102,14 @@ class AugmentedLagrangianModel:
         self.omegastar = 1.0e-6
         self.etastar = 1.0e-6
         self.lambdap0 = torch.ones((self.M,2), dtype=torch.float64, device=device)
-        self.NAdam = 100
+        self.NAdam = 200
         self.mup = torch.ones_like(x10) * self.mup0
         self.omegap = torch.ones_like(x10) * self.omegap0
         self.etap = torch.ones_like(x10) * self.etap0
         self.lambdap = torch.ones_like(x10) * self.lambdap0
         self.maxiter = 1000
         self.maxoptiter = 1000
-        self.lr = 0.1
+        self.lr = 0.001
 
     def optimize(self, x):
         """Target function to minimize."""
@@ -123,6 +123,8 @@ class AugmentedLagrangianModel:
         self.x2f.requires_grad_(False)
         self.lambdap.requires_grad_(False)
         self.mup.requires_grad_(False)
+        cm = None
+
         while (m.numel() > 0) and (count < self.maxiter):
           J = torch.ones_like(self.x10)*100.0#Start a new computational graph
 
@@ -140,13 +142,31 @@ class AugmentedLagrangianModel:
 
           xtm.requires_grad_(True)
     
-          optimizer = torch.optim.Adam([xtm], lr=self.lr)
+          optimizer = torch.optim.AdamW([xtm], lr=self.lr)
           optimizer.zero_grad()
-          #Apply the backward pass once
+          countOpt = 0
           J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
+          J.backward()
+          xmPm = xtm.grad.norm(1,keepdim=True)
+          optimizer.step()
+
+
+          while torch.any(xmPm > self.omegap,1):
+            print(f"J: {J}")
+            print(f"xtm.grad.norm() for count {countOpt}: {xmPm}")
+            countOpt = countOpt + 1
+            optimizer.zero_grad()
+            J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
+            J.backward()
+            xmPm = xtm.grad.norm(1,keepdim=True)
+            optimizer.step()
+
+          #update the original tensor
+          xt[m] = xtm.detach()
+          #Apply the backward pass once
           print(f"J: {J}")
           print(f"cm: {cm}")
-          J.norm(dim=1,keepdim=True).backward()
+          
 
 
           #Run the optimizer until we can obtain some degree of convergence
@@ -156,21 +176,23 @@ class AugmentedLagrangianModel:
           print(f"xtm.grad.norm() before optimization: {xmPm}")
           print("etap: ", self.etap)
           
-          while (xmPm > self.omegap).all() and countopt < self.maxoptiter:
-            countopt = countopt + 1
-            print(f"cm norm: {cm.norm(1,keepdim=True)}")
-            print(f"xtm.grad.norm(): {xmPm} versus target: {self.omegap}")
-            optimizer.zero_grad()
-            J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
-            print(f"J: {J}")
-            print(f"cm: {cm}")
-            J.norm(dim=1,keepdim=True).backward()
-
-            xmPm = xtm.grad.norm(1,keepdim=True)
-            optimizer.step()
+          #while (xmPm > self.omegap).all() and countopt < self.maxoptiter:
+          #  countopt = countopt + 1
+            #print(f"cm norm: {cm.norm(1,keepdim=True)}")
+            #print(f"xtm.grad.norm(): {xmPm} versus target: {self.omegap}")
+            #optimizer.zero_grad()
+            #J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
+            #print(f"J: {J}")
+            #print(f"cm: {cm}")
+            #J.norm(dim=1,keepdim=True).backward()
+          #  J = optimizer.step(closure)
+          #  print(f"J: {J}")
+          #  print(f"cm: {cm}")
+          #  print(f"xtm.grad.norm() during while loop: {xmPm}")
+          #  xmPm = xtm.grad.norm(1,keepdim=True)
             
-          print(f"xtm after optimization: {xtm}")
-          xt[m] = xtm.detach()
+          #print(f"xtm after optimization: {xtm}")
+          #xt[m] = xtm.detach()
           #There are three different cases
           m1 = torch.all((cm.norm(1,keepdim=True) <= self.etastar), 1) & torch.all((xmPm <= self.omegastar), dim=1)
           m2 = torch.all(~m1 & (cm.norm(1,keepdim=True) <= self.etap[m]), dim=1)
