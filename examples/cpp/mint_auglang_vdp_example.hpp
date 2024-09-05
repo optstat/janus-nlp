@@ -4,15 +4,12 @@
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control for minimum time
  */
+#define HEADER_ONLY
 #include <torch/torch.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/autograd.h>
 #include <janus/radauted.hpp>
-#include <janus/radaute.hpp>
-#include <janus/tensordual.hpp>
-#include <janus/janus_util.hpp>
-#include <janus/janus_ode_common.hpp>
 
 using namespace janus;
 namespace py = pybind11;
@@ -44,8 +41,8 @@ namespace janus
             int MaxNbrStep = 10000; // Limit the number of steps to avoid long running times
             double umin = 0.01;
             double umax = 10.0;
-            double mu = 10.0;
-            double W = 0.1;
+            double mu = 1.0;
+            double W = 0.01;
 
             TensorDual Jfunc(const TensorDual &F)
             {
@@ -260,7 +257,14 @@ namespace janus
 
               janus::RadauTeD r(vdpdyns_Lang, jac_Lang, tspanc, yc, options, paramsc); // Pass the correct arguments to the constructor
               // Call the solve method of the Radau5 class
-              int rescode = r.solve();
+              auto rescode = r.solve();
+              //Check the return codes
+              auto m = rescode != 0;
+              if ( m.any().item<bool>())
+              {
+                //The solver fails gracefully so we just provide a warning message here
+                std::cerr << "Solver failed to converge for some samples" << std::endl;
+              }
 
               auto pf = r.y.r.index({Slice(), Slice(0, 2)});
               auto xf = r.y.r.index({Slice(), Slice(2, 4)});
@@ -269,10 +273,12 @@ namespace janus
               auto x1delta = (r.y.index({Slice(), Slice(2, 3)}) - x1f);
               auto x2delta = (r.y.index({Slice(), Slice(3, 4)}) - x2f);
               auto deltas = torch::cat({x1delta.r, x2delta.r}, 1);  //Boundary conditions
+              auto LI = r.y.r.index({Slice(), Slice(4, 5)});
+
               // The Hamiltonian is zero at the terminal time
               // in principle but this may not be the always the case
               // Now add the augmented Lagrangian term
-              auto f = ft- lambdap.index({Slice(), 0}) * x1delta -
+              auto f = ft + LI - lambdap.index({Slice(), 0}) * x1delta -
                   lambdap.index({Slice(), 1}) * x2delta  +
                   0.5 * mup * (x1delta * x1delta + x2delta * x2delta);
               std::cerr << "f = " << f << std::endl;
@@ -283,6 +289,118 @@ namespace janus
               grads.index_put_({Slice(), Slice(0, 1)}, f.d.index({Slice(), 0, Slice(1, 2)})); // p2
               grads.index_put_({Slice(), Slice(1, 2)}, f.d.index({Slice(), 0, Slice(4, 5)})); // ft
               auto res = std::make_tuple(f.r, deltas, grads);
+              return res;
+            }
+
+            /**
+             * Radau ODE example using the Van der Pol oscillator
+             * with sensitivity calculations utilizing dual numbers
+             * to calculate the gradients of the constraints
+             * The function returns the residuals of the expected
+             * end state wrt x1f x2f and final Hamiltonian value
+             * using p20 and tf as the input variables (x)
+             * The relationship is defined by the necessary conditions
+             * of optimality as defined by the Variational approach to
+             * optimal control
+             * Function returns the objective and the constraint violations and the
+             * jacobian of the constraints
+             */
+            std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> mint_propagate(const torch::Tensor &x,
+                                                                                    
+                                                                             const torch::Tensor &params)
+            {
+              // set the device
+              // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
+              int M = x.size(0);
+              int N = 5; // Length of the state space vector in order [p1, p2, x1, x2]
+              int D = 5; // Length of the dual vector in order [p1, p2, x1, x2, tf]
+              double rtol = 1e-12;
+              double atol = 1e-16;
+              if (params.dim() == 1)
+              {
+                rtol = params.index({0}).item<double>();
+                atol = params.index({1}).item<double>();
+              }
+              else
+              {
+                rtol = params.index({Slice(), 0}).item<double>();
+                atol = params.index({Slice(), 1}).item<double>();
+              }
+
+              auto p20 = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
+              p20.d.index_put_({Slice(), 0, 1}, 1.0); // This is an independent variable whose sensitivity we are interested in
+              auto ustar = calc_control(p20);
+              //H=p1*x2+p2*ustar*(1-x1*x1)*x2-p2*x1+0.5*W*ustar*ustar+1;
+              auto p10 = (p20*ustar*(1-x10*x10)*x20-p20*x10+0.5*W*ustar*ustar+1)/x20;
+              auto ft = TensorDual(x.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
+              ft.d.index_put_({Slice(), 0, 4}, 1.0); // Set the dependency to itself
+
+              TensorDual y = TensorDual(torch::zeros({M, N}, x.options()),
+                                        torch::zeros({M, N, D}, x.options()));
+              TensorDual one = TensorDual(torch::ones({M, 1}, x.options()), torch::zeros({M, 1, D}, x.options()));
+
+              y.index_put_({Slice(), Slice(0, 1)}, p10);       // p1
+              y.index_put_({Slice(), Slice(1, 2)}, p20);       // p2
+              y.index_put_({Slice(), Slice(2, 3)}, one*x10); // x1
+              y.index_put_({Slice(), Slice(3, 4)}, one*x20); // x2
+              auto y0 = y.clone();                             // Copy of the initial conditions
+
+              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
+              TensorDual tspan = TensorDual(torch::rand({M, 2}, x.options()), torch::zeros({M, 2, D}, x.options()));
+              tspan.r.index_put_({Slice(), Slice(0, 1)}, 0.0);
+              // tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
+              tspan.index_put_({Slice(), Slice(1, 2)}, ft);
+              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
+              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
+              janus::OptionsTeD options = janus::OptionsTeD(); // Initialize with default options
+              options.RelTol = torch::tensor({rtol}, x.options());
+              options.AbsTol = torch::tensor({atol}, x.options());
+
+              options.MaxNbrStep = MaxNbrStep;
+              auto tspanc = tspan.clone();
+              auto yc = y.clone();
+              auto paramsc = TensorDual::empty_like(y);
+
+              janus::RadauTeD r(vdpdyns_Lang, jac_Lang, tspanc, yc, options, paramsc); // Pass the correct arguments to the constructor
+              // Call the solve method of the Radau5 class
+              auto rescode = r.solve();
+              //Check the return codes
+              auto m = rescode != 0;
+              if ( m.any().item<bool>())
+              {
+                //The solver fails gracefully so we just provide a warning message here
+                std::cerr << "Solver failed to converge for some samples" << std::endl;
+              }
+
+              auto pf = r.y.r.index({Slice(), Slice(0, 2)});
+              auto xf = r.y.r.index({Slice(), Slice(2, 4)});
+              auto p0 = y0.r.index({Slice(), Slice(0, 2)});
+              // Now calculate the boundary conditionsx
+              auto x1delta = (r.y.index({Slice(), Slice(2, 3)}) - x1f);
+              auto x2delta = (r.y.index({Slice(), Slice(3, 4)}) - x2f);
+              //std::cerr << "x2delta=";
+              //janus::print_dual(x2delta);
+              auto deltas = torch::cat({x1delta.r, x2delta.r}, 1);  //Boundary conditions
+              auto LI = r.y.index({Slice(), Slice(4, 5)});
+
+              // The Hamiltonian is zero at the terminal time
+              // in principle but this may not be the always the case
+              // Now add the augmented Lagrangian term
+              auto f = ft+LI;
+              std::cerr << "f = " << f << std::endl;
+              janus::print_dual(f);
+              auto grads = torch::zeros_like(x);
+              grads.index_put_({Slice(), Slice(0, 1)}, f.d.index({Slice(), 0, Slice(1, 2)})); // p2
+              grads.index_put_({Slice(), Slice(1, 2)}, f.d.index({Slice(), 0, Slice(4, 5)})); // ft
+              // The hamiltonian is zero at the terminal time
+              // because this is a minimum time problem
+              auto jac = torch::zeros({M, 2, 2}, x.options());
+              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, x1delta.d.index({Slice(), 0, Slice(1, 2)})); // p2
+              jac.index_put_({Slice(), Slice(0, 1), Slice(1, 2)}, x1delta.d.index({Slice(), 0, Slice(4, 5)})); // ft
+              jac.index_put_({Slice(), Slice(1, 2), Slice(0, 1)}, x2delta.d.index({Slice(), 0, Slice(1, 2)})); // p2
+              jac.index_put_({Slice(), Slice(1, 2), Slice(1, 2)}, x2delta.d.index({Slice(), 0, Slice(4, 5)})); // ft
+
+              auto res = std::make_tuple(f.r, grads, deltas, jac);
               return res;
             }
 

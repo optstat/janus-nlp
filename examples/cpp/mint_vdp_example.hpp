@@ -4,15 +4,13 @@
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control for minimum time
  */
+#define HEADER_ONLY
 #include <torch/torch.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/autograd.h>
 #include <janus/radauted.hpp>
 #include <janus/radaute.hpp>
-#include <janus/tensordual.hpp>
-#include <janus/janus_util.hpp>
-#include <janus/janus_ode_common.hpp>
 
 using namespace janus;
 namespace py = pybind11;
@@ -403,9 +401,9 @@ namespace janus
 
               janus::RadauTeD r(vdpdyns_dual, jac_dual, tspanc, yc, options, paramsc); // Pass the correct arguments to the constructor
               // Call the solve method of the Radau5 class
-              int rescode = r.solve();
+              torch::Tensor rescode = r.solve();
 
-              if (rescode != 0)
+              if (rescode.any().item<int>() != 0)
               {
                 std::cerr << "propagation failed\n";
                 // Return a large result to make sure the solver does not fail
@@ -474,7 +472,7 @@ namespace janus
               auto paramsc = y * 0.0;
 
               janus::RadauTe r(dyns_state, jac_state, tspan, y, options, paramsc); // Pass the correct arguments to the constructor`
-              int rescode = r.solve();
+              torch::Tensor rescode = r.solve();
               auto x1f = r.y.index({Slice(), Slice(0, 1)});
               auto x2f = r.y.index({Slice(), Slice(1, 2)});
               return std::make_tuple(x1f, x2f);
@@ -555,14 +553,14 @@ namespace janus
 
             janus::RadauTeD r(vdpdyns_dual, jac_dual, tspan, y, options, paramsode); // Pass the correct arguments to the constructor
             // Call the solve method of the Radau5 class
-            int rescode = r.solve();
+            torch::Tensor rescode = r.solve();
             // std::cerr << "r.Last=";
             // std::cerr << r.Last << "\n";
             // std::cerr << "r.h=";
             // janus::print_dual(r.h);
             torch::Tensor jacVal = torch::zeros({M, 3, 3}, torch::kFloat64);
 
-            if (rescode != 0)
+            if (rescode.any().item<int>() != 0)
             {
               std::cerr << "propagation failed\n";
               // Return default zeros.  These values will not be used

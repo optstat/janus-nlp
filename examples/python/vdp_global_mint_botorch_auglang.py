@@ -1,7 +1,9 @@
 import torch
-import janus_nlp
 import numpy as np
+import cyipopt
 import matplotlib.pyplot as plt
+
+import janus_nlp
 from torch.autograd import gradcheck
 
 #Implementation of the Augmented Lagrangian function using PyTorch
@@ -13,17 +15,20 @@ from botorch.acquisition import LogExpectedImprovement
 from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from scipy.stats import qmc
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # Set the device
 device = torch.device("cpu")
 dtype = torch.double  # Ensure that we use double precision
 
 # Define parameter bounds
-p10min, p10max = -0.1, 0.1
-p20min, p20max = -0.1, 0.1
-mu = 1.0
-ftmin, ftmax = 0.1, 10.0
-W = 0.1
+p20min, p20max = -0.01, 0.01
+mu = 10.0
+ftmin, ftmax = 0.1, 25.0
+xmint = torch.tensor([p20min, ftmin], dtype=dtype, device=device)
+xmaxt = torch.tensor([p20max, ftmax], dtype=dtype, device=device)
+
+W = 0.01
 
 # Define normalization and standardization functions
 def normalize(X, bounds):
@@ -50,6 +55,8 @@ def vdp(x, x10, x1f, x20, x2f):
     janus_nlp.mint_set_mu(mu)
     errors = janus_nlp.vdp_solve(x)    
     return errors
+
+
 
 class VdpNecCond(torch.autograd.Function):
     @staticmethod
@@ -86,7 +93,70 @@ class VdpNecCond(torch.autograd.Function):
         #print(f"grads: {grads}")
 
         return grads*grad_output, None, None, None, None, None, None
+
+class VDPMintIpopt(cyipopt.Problem):
+    def __init__(self, x10, x1f, x20, x2f,mu, W):
+        self.x10 = x10
+        self.x1f = x1f
+        self.x20 = x20
+        self.x2f = x2f
+        self.x10t = torch.tensor([[self.x10]], dtype=dtype, device=device)
+        self.x20t = torch.tensor([[self.x20]], dtype=dtype, device=device)
+        self.x1ft = torch.tensor([[self.x1f]], dtype=dtype, device=device)
+        self.x2ft = torch.tensor([[self.x2f]], dtype=dtype, device=device)
+        self.W = W
+        self.mu = mu
+        janus_nlp.set_auglangr_x0(self.x10t, self.x20t)
+        janus_nlp.set_auglangr_xf(self.x1ft, self.x2ft)
+        janus_nlp.set_auglangr_mu(mu)
+        janus_nlp.set_auglangr_W(W)
+
+
+    def objective(self, x):
+      p2 = x[0]
+      ft = x[1]
+      xt = torch.tensor([p2, ft], dtype=dtype, device=device).unsqueeze(0)
+
+      params = torch.tensor([1.0e-9, 1.0e-12], dtype=torch.float64)
+
+      [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
+
+      return obj.squeeze().flatten().numpy()
     
+    def gradient(self, x):
+      p2 = x[0]
+      ft = x[1]
+      xt = torch.tensor([p2, ft], dtype=dtype, device=device).unsqueeze(0)
+
+      params = torch.tensor([1.0e-9, 1.0e-12], dtype=torch.float64)
+
+      [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
+
+      return grads.squeeze().flatten().numpy()
+    
+    def constraints(self, x):
+        p2 = x[0]
+        ft = x[1]
+        xt = torch.tensor([p2, ft], dtype=dtype, device=device).unsqueeze(0)
+        params = torch.tensor([1.0e-9, 1.0e-12], dtype=torch.float64)
+
+        [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
+        print(f"Errors: {errors}")
+        return errors
+    
+    def jacobian(self, x):
+        p2 = x[0]
+        ft = x[1]
+        xt = torch.tensor([p2, ft], dtype=dtype, device=device).unsqueeze(0)
+        params = torch.tensor([1.0e-9, 1.0e-12], dtype=torch.float64)
+
+        [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
+        print(f'Jacobian: {jac}')
+        return jac.squeeze().flatten().numpy()
+
+
+
+
 
 #Reference implementation from LANCELOT adopted for PyTorch
 class AugmentedLagrangianModel:
@@ -96,11 +166,14 @@ class AugmentedLagrangianModel:
         self.x1f = x1f
         self.x20 = x20
         self.x2f = x2f
+        self.factor = 0.5
+        self.min_lr = 1.0e-8
         self.mup0 = 10.0
         self.omegap0 = 1.0/self.mup0
-        self.etap0 = 1.0/(self.mup0**0.1)
-        self.omegastar = 1.0e-6
-        self.etastar = 1.0e-6
+        self.etap0 = 0.1#1.0/(self.mup0**0.1)
+        #Create modest values for the convergence criteria
+        self.omegastar = 1.0e-4
+        self.etastar = 1.0e-4
         self.lambdap0 = torch.ones((self.M,2), dtype=torch.float64, device=device)
         self.NAdam = 200
         self.mup = torch.ones_like(x10) * self.mup0
@@ -109,7 +182,29 @@ class AugmentedLagrangianModel:
         self.lambdap = torch.ones_like(x10) * self.lambdap0
         self.maxiter = 1000
         self.maxoptiter = 1000
-        self.lr = 0.001
+        self.lr =  0.1#Initial learning rate
+        self.saved_state = None  # Attribute to store the in-memory state
+
+
+    
+    def save_state_in_memory(self, optimizer):
+        # Save the model and optimizer state along with any other relevant information in memory
+        self.saved_state = {
+            'optimizer_state_dict': optimizer.state_dict(),
+        }
+        print("State saved in memory")
+
+    def schedule(self, optimizer):
+        for param_group in optimizer.param_groups:
+          new_lr = max(param_group['lr'] * self.factor, self.min_lr)
+          param_group['lr'] = new_lr
+          print(f"Learning rate reduced to {new_lr:.6f}")
+          self.lr = new_lr
+        self.save_state_in_memory(optimizer)
+
+    def P(self, x, gradL, l, u):
+        """Projection operator."""
+        return torch.max(torch.min(x-gradL, u), l)
 
     def optimize(self, x):
         """Target function to minimize."""
@@ -123,10 +218,11 @@ class AugmentedLagrangianModel:
         self.x2f.requires_grad_(False)
         self.lambdap.requires_grad_(False)
         self.mup.requires_grad_(False)
+        
         cm = None
 
         while (m.numel() > 0) and (count < self.maxiter):
-          J = torch.ones_like(self.x10)*100.0#Start a new computational graph
+          J = torch.ones_like(self.x10)*100.0
 
           count = count + 1
           #It is necessary to detach the tensors here to avoid going through the same graph twice
@@ -141,25 +237,51 @@ class AugmentedLagrangianModel:
           xtm = xt[m]
 
           xtm.requires_grad_(True)
-    
-          optimizer = torch.optim.AdamW([xtm], lr=self.lr)
-          optimizer.zero_grad()
-          countOpt = 0
+          #Set the parameters in such a way so that the optimizer trusts the gradients
+          #Because dual numbers are very precise and noise free
+          #optimizer = torch.optim.Adam([xtm], betas=(0.8, 0.999), lr=self.lr, amsgrad=True)
+          optimizer = torch.optim.Adam([xtm]) 
+          if self.saved_state is not None:
+            optimizer.load_state_dict(self.saved_state['optimizer_state_dict'])
+            print("Optimizer state loaded")
+          # Create the ReduceLROnPlateau scheduler
+          scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 
+                                                 mode='min',  # 'min' for minimizing the monitored metric (e.g., validation loss)
+                                                 factor=0.1,  # Factor by which the learning rate will be reduced (new_lr = lr * factor)
+                                                 patience=10,  # Number of epochs with no improvement after which learning rate will be reduced
+                                                 threshold=0.0001,  # Threshold for measuring the new optimum
+                                                 threshold_mode='rel',  # 'rel' or 'abs' to compare with the best
+                                                 cooldown=0,  # Number of epochs to wait before resuming normal operation after lr has been reduced
+                                                 min_lr=0,  # Lower bound on the learning rate
+                                                 eps=1e-08)  # Minimal decay applied to the lr, if it is the same as the last lr
+
+          scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, verbose=True, min_lr=1e-8)
           J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
           J.backward()
-          xmPm = xtm.grad.norm(1,keepdim=True)
-          optimizer.step()
+          Pval = self.P(xtm, xtm.grad, xmint, xmaxt)
+          xmPnorm = (xtm-Pval).norm(1,keepdim=True)
 
+          countOpt = 1
 
-          while torch.any(xmPm > self.omegap,1):
-            print(f"J: {J}")
-            print(f"xtm.grad.norm() for count {countOpt}: {xmPm}")
+          while torch.any(xmPnorm > self.omegap,1):
             countOpt = countOpt + 1
             optimizer.zero_grad()
             J, cm = VdpNecCond.apply(xtm, self.x10[m], self.x20[m], self.x1f[m], self.x2f[m], self.lambdap[m], self.mup[m])
             J.backward()
-            xmPm = xtm.grad.norm(1,keepdim=True)
+            Pval = self.P(xtm, xtm.grad, xmint, xmaxt)
+            xmPnorm = (xtm-Pval).norm(1,keepdim=True)
+            print(f"J: {J}")
+            print(f"xmPnorm for count {countOpt}: {xmPnorm}")
+            print(f"cm: {cm}")
+
             optimizer.step()
+          scheduler.step(J)
+          #if countOpt == self.NAdam:
+          #  print("Optimization failed reducing step size")
+          #  self.schedule(optimizer)
+          #  #update the original tensor anyway keep any progress made
+          #  xt[m] = xtm.detach()
+          #  continue
 
           #update the original tensor
           xt[m] = xtm.detach()
@@ -171,10 +293,6 @@ class AugmentedLagrangianModel:
 
           #Run the optimizer until we can obtain some degree of convergence
           #around the necessary conditions
-          countopt = 0
-          xmPm = xtm.grad.norm(1,keepdim=True)
-          print(f"xtm.grad.norm() before optimization: {xmPm}")
-          print("etap: ", self.etap)
           
           #while (xmPm > self.omegap).all() and countopt < self.maxoptiter:
           #  countopt = countopt + 1
@@ -194,10 +312,15 @@ class AugmentedLagrangianModel:
           #print(f"xtm after optimization: {xtm}")
           #xt[m] = xtm.detach()
           #There are three different cases
-          m1 = torch.all((cm.norm(1,keepdim=True) <= self.etastar), 1) & torch.all((xmPm <= self.omegastar), dim=1)
-          m2 = torch.all(~m1 & (cm.norm(1,keepdim=True) <= self.etap[m]), dim=1)
-          m3 = torch.all(~m1 & (cm.norm(1,keepdim=True) > self.etap[m]), dim=1)
+          m1 = torch.all((cm.norm(1,keepdim=True) <= self.etastar), 1) & torch.all((xmPnorm <= self.omegastar), dim=1)
+          m2 = ~m1 & torch.all((cm.norm(1,keepdim=True) <= self.etap[m]), dim=1)
+          m3 = ~m1 & torch.all((cm.norm(1,keepdim=True) > self.etap[m]), dim=1)
+          print(f"m1: {m1}")
+          print(f"m2: {m2}")
+          print(f"m3: {m3}")
+          print(f"cm: {cm}")
           #Expand the masks to the original size
+          self.save_state_in_memory(optimizer)
 
           #Apply the second case to the parameters
           if (torch.any(m2)):
@@ -216,8 +339,9 @@ class AugmentedLagrangianModel:
             indcs = m.nonzero()
             filtindcs = indcs[m3]
             self.mup.index_put_((filtindcs,), self.mup[filtindcs]*100.0)
-            self.etap.index_put_((filtindcs,), self.mup[filtindcs].pow(-0.1))
+            self.etap.index_put_((filtindcs,), self.mup[filtindcs].pow(0.1).reciprocal())
             self.omegap.index_put_((filtindcs,), self.mup[filtindcs].reciprocal())
+
           #Finally update the mask for those elements that have converged
           if (torch.any(m1)):
             print("Applying case 1")
@@ -237,7 +361,7 @@ class AugmentedLagrangianModel:
 
 if __name__ == "__main__":
   # Example bounds for three parameters
-  p20min, p20max = -0.1, 0.1
+  p20min, p20max = -1.0, 1.0
   ftmin, ftmax   = 1.0, 10.0
   x1f = -1.0
   x2f = -2.0
@@ -275,9 +399,35 @@ if __name__ == "__main__":
   x2ft = torch.ones((M,1), dtype=torch.float64, device=device) * x2f
   x10t = torch.ones((M,1), dtype=torch.float64, device=device) * x10
   x20t = torch.ones((M,1), dtype=torch.float64, device=device) * x20
-  model = AugmentedLagrangianModel(x10t, x1ft, x20t, x2ft)
-  Y_train = model.optimize(X_train)
-  print(f'Y_train shape: {Y_train.shape}')
+  #model = AugmentedLagrangianModel(x10t, x1ft, x20t, x2ft)
+  #Y_train = model.optimize(X_train)
+  #print(f'Y_train shape: {Y_train.shape}')
+  
+  
+  problem = VDPMintIpopt(x10, x1f, x20, x2f, mu, W)
+  nlp = cyipopt.Problem(
+            n=2,
+            m=2,
+            problem_obj=problem,
+            lb=[p20min, ftmin],
+            ub=[p20max, ftmax],
+            #Loosen the constraints to achieve convergence
+            cl=[-1.0e-4, -1.0e-4],
+            cu=[1.0e-4,  1.0e-4]
+        )
+
+  # Set the options
+  nlp.add_option('hessian_approximation', 'limited-memory')  # Enable limited memory BFGS (L-BFGS)
+  nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
+  nlp.add_option('tol', 1e-4)               # Set the tolerance to 10^-4
+  nlp.add_option('print_level', 5)          # Set print level to 5
+  nlp.add_option('max_iter', 1000)       # Set the maximum number of iterations to 1000
+  nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
+  nlp.add_option("derivative_test", "first-order")  # Check the gradient
+  x0 = np.array([0.0, 6.0])
+  x, info = nlp.solve(x0)
+  print(f"Received info: {info}")
+  print(f"Optimal solution: {x}")
   exit(1)
 
   # Define the Gaussian Process model

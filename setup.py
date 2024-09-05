@@ -24,16 +24,24 @@ def get_extensions():
     use_cuda = use_cuda and torch.cuda.is_available() and CUDA_HOME is not None
     extension = CUDAExtension if use_cuda else CppExtension
 
-    extra_link_args = []
+    extra_link_args = [
+    #    "-L/usr/local/lib",   # Link to the directory where the libraries are located
+    #    "-L/home/panos/Applications/libtorch/lib",  # Link to the directory where the libtorch libraries are located
+    #    "-lradaute",          # Link to libradaute.so
+    #    "-lradauted"          # Link to libradauted.so
+    ]
+
+    
     extra_compile_args = {
         "cxx": [
-            "-O3" if not debug_mode else "-O0",
-            "-g0" if not debug_mode else "-g",
-            "-march=native" if not debug_mode else "",
+            "-O3",
+            "-g0",
+            "-march=native",
             "-fdiagnostics-color=always",
         ],
         "nvcc": [
             "-O3" if not debug_mode else "-O0",
+            "-lineinfo" if debug_mode else "",  # Include CUDA line info in debug builds
         ],
     }
 

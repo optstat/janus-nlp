@@ -1,6 +1,7 @@
 #!/bin/bash
 #Set the debug flag hers
-export DEBUG=1
+export DEBUG=0
+export RELEASE=1
 # Create the virtual environment if it doesn't exist
 if [ ! -d "build/venv" ]; then
     python3 -m venv build/venv
@@ -28,14 +29,14 @@ fi
 export Torch_DIR=$(pwd)/build/libtorch/share/cmake/Torch
 export Torch_LIBRARY_DIR=$(pwd)/build/libtorch/lib
 export Torch_INCLUDE_DIR=$(pwd)/build/libtorch/include
-
+export LD_LIBRARY_PATH=$(pwd)/build/libtorch/lib:$LD_LIBRARY_PATH
 
 
 # Clean previous builds
 rm -rf build/lib
 
 # Run the setup script
-python3 setup.py build_ext --inplace
+python3 setup.py build_ext --inplace --verbose
 pip install .
 
 
