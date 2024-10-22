@@ -1,5 +1,5 @@
-#ifndef MINT_AUGLANG_VDP_EXAMPLE_HPP
-#define MINT_AUGLANG_VDP_EXAMPLE_HPP
+#ifndef AUGLANG_FVDP_EXAMPLE_HPP
+#define AUGLANG_FVDP_EXAMPLE_HPP
 /**
  * Use the Van Der Pol oscillator as an example
  * To calculate optimal control for minimum time
@@ -20,10 +20,8 @@ namespace janus
   {
     namespace examples
     {
-      namespace vdp
+      namespace fvdp
       {
-        namespace mint // min time optimal control
-        {
           namespace auglang // Augmented Langrangian
           {
 
@@ -508,7 +506,7 @@ namespace janus
             }
 
           }
-        }
+        
       }
     }
   }

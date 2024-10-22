@@ -9,6 +9,7 @@
 //#include "../../examples/cpp/newted_vdp_example.hpp"
 #include "../../examples/cpp/mint_vdp_example.hpp"
 #include "../../examples/cpp/mint_auglang_vdp_example.hpp"
+#include "../../examples/cpp/minu_auglang_linear_example.hpp"
 
 namespace py = pybind11;
 
@@ -40,5 +41,12 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("set_auglangr_x0", &janus::nlp::examples::vdp::mint::auglang::set_x0, "Set the initial point for the mint example");
     m.def("set_auglangr_mu", &janus::nlp::examples::vdp::mint::auglang::set_mu, "Set the regularization weight for the mint example");
     m.def("set_auglangr_W", &janus::nlp::examples::vdp::mint::auglang::set_W, "Set the final state for the mint example");
-  
+    m.def("calc_ustar", &janus::nlp::examples::vdp::mint::auglang::calc_ustar, "Calculate the control for the mint example");
+    m.def("set_ulimits", &janus::nlp::examples::vdp::mint::auglang::set_ulimits, "Set the control limits for the mint example");
+    m.def("linear_minu_set_xf", &janus::nlp::examples::linear::minu::auglang::set_xf, "Set the final point for the linear minu example");
+    m.def("linear_minu_set_x0", &janus::nlp::examples::linear::minu::auglang::set_x0, "Set the initial point for the linear minu example");
+    m.def("linear_minu_set_a", &janus::nlp::examples::linear::minu::auglang::set_a, "Set the constant a for the linear minu example");
+    m.def("linear_minu_set_b", &janus::nlp::examples::linear::minu::auglang::set_b, "Set the constant b for the linear minu example");
+    m.def("linear_minu_set_ft", &janus::nlp::examples::linear::minu::auglang::set_ft, "Set the constant b for the linear minu example");
+    m.def("linear_minu_auglangr_propagate", &janus::nlp::examples::linear::minu::auglang::minu_auglangr_propagate, "Augmented Lagrangian and its gradients for the linear minu example");
 }

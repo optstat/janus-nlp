@@ -43,3 +43,5 @@ out*.txt
 # Egg info directory
 /janus_nlp.egg-info/
 /smac3_output/
+
+/data

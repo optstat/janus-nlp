@@ -11,7 +11,7 @@ fi
 source build/venv/bin/activate
 
 # Install necessary packages
-pip3 install setuptools wheel numpy matplotlib scipy torch smac botorch ax-platform gpytorch scikit-learn joblib dask distributed cyipopt ipdb
+pip3 install setuptools wheel numpy matplotlib scipy torch smac botorch gpytorch scikit-learn joblib dask distributed cyipopt ipdb ray
 
 # Download and extract LibTorch
 LIBTORCH_URL="https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-latest.zip"
