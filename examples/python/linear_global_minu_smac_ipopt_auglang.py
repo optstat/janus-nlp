@@ -280,7 +280,7 @@ def do_optimize(initial_conditions):
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
     #update the scenario mup
-    config_space = optimizer.scenario.cs
+    config_space = optimizer.scenario.configspace
 
     # Remove the existing 'mup' parameter if it exists
     if "mup" in config_space:
@@ -288,6 +288,9 @@ def do_optimize(initial_conditions):
     else:
       # Add a new constant if it's not already in the config space
       config_space.add_hyperparameter(Constant("mup", mup))
+
+    # Make sure to update the scenario's configuration space
+    optimizer.scenario.configspace = config_space
 
   ########################################################################################################
   #Now implement the full ALM algorithm
@@ -380,7 +383,7 @@ def augmented_opt(iteration=0, numSamples=2):
 if __name__ == "__main__":
   ray.init()
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(0, 100)
+  ics, phat = augmented_opt(10, 100)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
