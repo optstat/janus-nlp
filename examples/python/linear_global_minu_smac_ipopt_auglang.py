@@ -279,6 +279,15 @@ def do_optimize(initial_conditions):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
+    #update the scenario mup
+    config_space = optimizer.scenario.cs
+
+    # Remove the existing 'mup' parameter if it exists
+    if "mup" in config_space:
+      config_space.get_hyperparameter("mup").value = mup
+    else:
+      # Add a new constant if it's not already in the config space
+      config_space.add_hyperparameter(Constant("mup", mup))
 
   ########################################################################################################
   #Now implement the full ALM algorithm
