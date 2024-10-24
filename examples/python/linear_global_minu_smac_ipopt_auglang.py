@@ -414,7 +414,7 @@ if __name__ == "__main__":
       phat_opt = torch.cat((phat_opt, phat[i,0:1].reshape(1,1)))
     else:
       ics_opt_failed = torch.cat((ics_opt_failed, ics[i,:].reshape(1,1)))
-      phat_opt_failed = torch.cat((phat_opt_failed, phat[i,0:3].reshape(1,1)))
+      phat_opt_failed = torch.cat((phat_opt_failed, phat[i,0:1].reshape(1,1)))
 
   
   #Now save the optimal initial conditions and the optimal parameters in a file using pickle
