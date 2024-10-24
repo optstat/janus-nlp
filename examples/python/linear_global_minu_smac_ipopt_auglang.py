@@ -100,8 +100,8 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   problem = LinearAugPMPIpopt(xics, lambdap, mup, x.flatten().numpy())
 
   print(f'problem = {problem}')
-  xlb = [0.0 for _ in range(3*M)]
-  xub = [0.0 for _ in range(3*M)]
+  xlb = [0.0 for _ in range(M)]
+  xub = [0.0 for _ in range(M)]
   #Limit the exploration space
   for i in range(M):
     if x[i,0] < 0: 
@@ -216,7 +216,7 @@ def augmented_objective_function(p10, ft, mup, x10):
 
 
 # Function to run SMAC with the initial condition list and the objective function with a seed
-def run_smac_with_initial_conditions(scenario, initial_condition):
+def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
     # Adjust your objective function if necessary to incorporate initial conditions and seeds
     def optimize_hyperparameters_smac(config, seed=0):
@@ -233,7 +233,7 @@ def run_smac_with_initial_conditions(scenario, initial_condition):
     smac = HyperparameterOptimizationFacade(scenario=scenario, target_function=optimize_hyperparameters_smac, overwrite=True)
 
     # Optimize hyperparameters
-    return smac.optimize()
+    return smac
 
 @ray.remote
 def do_optimize(initial_conditions):
@@ -245,16 +245,22 @@ def do_optimize(initial_conditions):
   #Penalty method with Global Bayesian Optimization 
   ########################################################
   converged = False
+  # Define the configuration space
+  cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
+                                                            "mup": Constant("mup", value=mup) })
+  scenario = Scenario(cs, deterministic=False, n_trials=100)
+  
+  optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
+  
+
+
+
   while count < 10:
     count = count + 1
+    incumbent=optimizer.optimize()
     
-    # Define the configuration space
-    cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
-                                                            "mup": Constant("mup", value=mup) })
     
     # Run SMAC to optimize the objective function
-    scenario = Scenario(cs, deterministic=False, n_trials=5000)
-    incumbent = run_smac_with_initial_conditions(scenario, initial_conditions)
     print(f"Optimal hyperparameters: {incumbent}")
     p1 = incumbent["p1"]
     t_span = (0, ft)
@@ -263,6 +269,8 @@ def do_optimize(initial_conditions):
     x1fp = sol.y[0,-1]
     cs = np.asarray([x1fp-x1f])
     cnorms = np.linalg.norm([x1fp-x1f])
+
+
     if cnorms < 1e-3:
       print(f"cnorms converged to {cnorms} count {count} for initial conditions: {initial_conditions}")
       converged = True
@@ -271,7 +279,71 @@ def do_optimize(initial_conditions):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
+
+  ########################################################################################################
+  #Now implement the full ALM algorithm
+  #Propagate the solution to initialize the parameters
+  #xopt = phat
+  #xic = ics
+  if converged:
+    lambdap = torch.zeros((1,1), dtype=torch.float64, device=device)
+    #We keep mup the same as from the penalty method.
+    mup = torch.ones((1,1), dtype=torch.float64, device=device)*mup
+    omegap = mup.reciprocal()
+    etap = mup.pow(0.1).reciprocal()
+
+    #####################################################
+    #Augmented Lagrangian optimization 
+    #Convert to tensors
+    count = 0
+    cnorms = torch.ones((1,1), dtype=torch.float64, device=device)*10.0
+    ics = torch.tensor(initial_conditions, dtype=torch.float64, device=device).reshape(1, 2)
+    xopt = torch.tensor([[p1, ft]], dtype=torch.float64, device=device)
+    print(f"Initial guess: {xopt}")
+    print(f"Initial lambdap: {lambdap}")
+    print(f"Initial mup: {mup}")
+    print(f"Initial omegap: {omegap}")
+    print(f"Initial etap: {etap}")
+    
+    while (cnorms > 1.0e-6).any() and count < 5:
+      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(ics, xopt, lambdap, mup, omegap.mean())
+      if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
+        print(f'Finished optimization')
+        break
+
+      count = count + 1
+      print(f"Objective function value from ipopt: {omegap}")
+      print(f"cnorms from ipopt: {cnorms}")
+      print(f"etap: {etap}")
+      print(f"xopt from ipopt: {xopt}")
+      print(f"omegap from ipopt: {omegap}")
+      m = (cnorms < etap).any(dim=1)
+
+      if m.any():
+        print(f'Applying case 1: Modifying the langrange multipliers')
+        mupls = torch.einsum("mi,m->m",lambdap, mup.squeeze(1) )
+        lambdap[m]=lambdap[m]-mup[m]*cs[m]/(1.0+mupls)
+        etap[m]=etap[m]/mup[m].pow(0.9)
+        omegap[m]=omegap[m]/mup[m]
+        print(f"lambdap: {lambdap}")
+        print(f"etap: {etap}")
+        print(f"omegap: {omegap}")
+        print(f"mup: {mup}")
+      else:
+        print(f'Applying case 2: Increasing the penalty')
+        mup[~m]=mup[~m]*100.0
+        etap[~m]=mup[~m].pow(0.1).reciprocal()
+        omegap[~m]=mup[~m].reciprocal()
+        print(f"mup: {mup}")
+        print(f"lambdap: {lambdap}")
+        print(f"etap: {etap}")
+        print(f"omegap: {omegap}")
+    #Update the values
+    p1 = xopt[0,0].item()
+  else:
+     print(f'Failed to converge skipping full ALM')
   return p1, converged
+
 
 def augmented_opt(iteration=0, numSamples=2):
     # Define bounds for the 2D Sobol sequence
@@ -303,6 +375,12 @@ if __name__ == "__main__":
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
+  ics_opt = torch.zeros((0,1), dtype=torch.float64, device=device)
+  phat_opt = torch.zeros((0,1), dtype=torch.float64, device=device)
+  #Also record the failed samples
+  ics_opt_failed = torch.zeros((0,1), dtype=torch.float64, device=device)
+  phat_opt_failed = torch.zeros((0,1), dtype=torch.float64, device=device)
+
   #Check the answer by forward propagation
   M = ics.size(0)
   for i in range(M):
@@ -313,7 +391,19 @@ if __name__ == "__main__":
     sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac = dyns_jacobian ,rtol=1e-9, atol=1e-12)
     p1fp = sol.y[0,-1]
     x1fp = sol.y[1,-1]
-    Jfp = sol.y[2,-1]
+    Jfp  = sol.y[2,-1]
     print(f"x1fp-x1f for sample {i}: {x1fp-x1f}")
   
+  #Now save the optimal initial conditions and the optimal parameters in a file using pickle
+  #in double precision
+  print(f"Number of succesful solutions {ics_opt.shape[0]}")
+  print(f"Number of failed solutions {ics_opt_failed.shape[0]}")
+  with open('data/linear_optimal_initial_conditions.pkl', 'ab') as f:
+    pickle.dump(ics_opt, f)
+  with open('data/linear_optimal_parameters.pkl', 'ab') as f:
+    pickle.dump(phat_opt, f)
+  with open('data/linear_failed_initial_conditions.pkl', 'ab') as f:
+    pickle.dump(ics_opt_failed, f)
+  with open('data/linear_failed_parameters.pkl', 'ab') as f:
+    pickle.dump(phat_opt_failed, f)
   

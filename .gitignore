@@ -44,4 +44,4 @@ out*.txt
 /janus_nlp.egg-info/
 /smac3_output/
 
-/data
+/data/*.pkl

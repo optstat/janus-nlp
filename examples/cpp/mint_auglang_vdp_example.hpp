@@ -155,7 +155,7 @@ namespace janus
               auto x1 = x.index({Slice(), Slice(0, 1)});
               auto p2 = p.index({Slice(), Slice(1, 2)});
               auto p1 = p.index({Slice(), Slice(0, 1)});
-              auto [u1star, u2star, u3star] = calc_control(p1,p2,x1,x2);
+              auto [u1star, u2star, u3star] = calc_control(p1.r,p2.r,x1.r,x2.r);
               //H=p1*x2+p2*mu*(1-x1*x1)*x2-p2*x1+p2*ustar+1;
               auto dp1dt = p2 * u2star * (-2 * x1) * x2 - p2;
               auto dp2dt = p1 + p2 * u2star * (1 - x1 * x1);
@@ -181,7 +181,7 @@ namespace janus
               auto p1 = p.index({Slice(), Slice(0, 1)});
               auto p2 = p.index({Slice(), Slice(1, 2)});
       
-              auto [u1star, u2star, u3star] = calc_control(p1, p2, x1, x2);
+              auto [u1star, u2star, u3star] = calc_control(p1.r, p2.r, x1.r, x2.r);
   
               auto jac = TensorMatDual(torch::zeros({y.r.size(0), 4, 4}, torch::kFloat64),
                                        torch::zeros({y.r.size(0), 4, 4, y.d.size(2)}, torch::kFloat64));

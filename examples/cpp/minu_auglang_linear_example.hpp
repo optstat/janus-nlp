@@ -105,10 +105,12 @@ namespace janus
               auto x1 = y.index({Slice(), Slice(1, 2)});
               auto p1 = y.index({Slice(), Slice(0, 1)});
               auto J  = y.index({Slice(), Slice(2, 3)});
-              auto u1star = calc_control(p1,x1);
+              auto one = TensorDual::ones_like(x1);
+              //The control is treated as an independent variable
+              auto u1star = calc_control(p1.r, x1.r);
               auto dp1dt = -a*p1;
-              auto dx1dt = a*x1 - b*b*u1star;
-              auto dJdt = TensorDual::zeros_like(J);
+              auto dx1dt = a*x1 +b*u1star;
+              auto dJdt = 0.5*u1star.square()*one;
 
               auto real_dyns = TensorDual::cat({dp1dt, dx1dt, dJdt});
 
@@ -126,14 +128,14 @@ namespace janus
               auto p1 = y.index({Slice(), Slice(0, 1)});
               auto J = y.index({Slice(), Slice(2, 3)});
       
-              auto u1star = calc_control(p1, x1);
+              auto u1star = calc_control(p1.r, x1.r);
   
               auto jac = TensorMatDual(torch::zeros({y.r.size(0), 3, 3}, torch::kFloat64),
                                        torch::zeros({y.r.size(0), 3, 3, y.d.size(2)}, torch::kFloat64));
               auto one = TensorDual::ones_like(x1);
               //-a*p1
               jac.index_put_({Slice(), Slice(0, 1), 0}, -one*a);
-              //a*x1 - b*b*u1star;
+              //a*x1 +b*u1star;
               jac.index_put_({Slice(), Slice(1, 2), 1}, one*a);
               
               return jac;

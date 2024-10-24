@@ -923,7 +923,7 @@ def augmented_objective_function(p10, p20, ft, lambdap1, lambdap2, mup, x10, x20
 
 
 # Function to run SMAC with the initial condition list and the objective function with a seed
-def run_smac_with_initial_conditions(scenario, initial_condition):
+def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
     # Adjust your objective function if necessary to incorporate initial conditions and seeds
     def optimize_hyperparameters_smac(config, seed=0):
@@ -945,7 +945,7 @@ def run_smac_with_initial_conditions(scenario, initial_condition):
     smac = HyperparameterOptimizationFacade(scenario=scenario, target_function=optimize_hyperparameters_smac, overwrite=True)
 
     # Optimize hyperparameters
-    return smac.optimize()
+    return smac
 
 @ray.remote
 def do_optimize(initial_conditions):
@@ -960,20 +960,22 @@ def do_optimize(initial_conditions):
   #Penalty method with Global Bayesian Optimization 
   ########################################################
   converged = False
-  while count < 5:
-    count = count + 1
-    
-    # Define the configuration space
-    cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
+
+  # Define the configuration space
+  cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
                                                                 "p2": Float("p2", bounds=(p20min, p20max), default=p2),
                                                                 "ft": Float("ft", bounds=(ftmin, ftmax), default=ft),
                                                                 "lambdap1": Constant("lambdap1", value=lambdap[0]),
                                                                 "lambdap2": Constant("lambdap2", value=lambdap[1]),
                                                                 "mup": Constant("mup", value=mup) })
     
-    # Run SMAC to optimize the objective function
-    scenario = Scenario(cs, deterministic=False, n_trials=1000)
-    incumbent = run_smac_with_initial_conditions(scenario, initial_conditions)
+  # Run SMAC to optimize the objective function
+  scenario = Scenario(cs, deterministic=False, n_trials=1000)
+  optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
+
+  while count < 5:
+    count = count + 1
+    incumbent = optimizer.optimize()
     print(f"Optimal hyperparameters: {incumbent}")
     p1 = incumbent["p1"]
     p2 = incumbent["p2"]
@@ -1086,7 +1088,7 @@ def augmented_opt(iteration=0, numSamples=2):
 if __name__ == "__main__":
   ray.init()
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(4, 100)
+  ics, phat = augmented_opt(6, 100)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
