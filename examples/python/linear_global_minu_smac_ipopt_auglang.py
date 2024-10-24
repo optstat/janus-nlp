@@ -24,6 +24,23 @@ ft = 1.0
 #Linear system parameters
 a = 1.0
 b = 1.0
+# Define an actor class to manage global variables like 'mup'
+@ray.remote
+class GlobalStateManager:
+    def __init__(self):
+        self.mup = 1.0
+
+    def set_mup(self, new_value):
+        self.mup = new_value
+
+    def get_mup(self):
+        return self.mup
+
+
+
+ray.init()
+
+global_manager = GlobalStateManager.remote()
 
 
 
@@ -221,7 +238,7 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
     # Adjust your objective function if necessary to incorporate initial conditions and seeds
     def optimize_hyperparameters_smac(config, seed=0):
       p1 = config["p1"]
-      mup = config["mup"]
+      mup = ray.get(global_manager.get_mup.remote())
       x10 = initial_condition[0]
       obj= augmented_objective_function(p1, ft, mup, x10)
       print(f"Optimizing with p1={p1}, and ft={ft}")
@@ -238,6 +255,8 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
 @ray.remote
 def do_optimize(initial_conditions):
   mup = 0.01
+  ray.get(global_manager.set_mup.remote(mup))
+
 
   count = 0
   p1 = 0.0
@@ -279,18 +298,7 @@ def do_optimize(initial_conditions):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
-    #update the scenario mup
-    config_space = optimizer.scenario.configspace
-
-    # Remove the existing 'mup' parameter if it exists
-    if "mup" in config_space:
-      config_space.get_hyperparameter("mup").value = mup
-    else:
-      # Add a new constant if it's not already in the config space
-      config_space.add_hyperparameter(Constant("mup", mup))
-
-    # Make sure to update the scenario's configuration space
-    optimizer.scenario.configspace = config_space
+      ray.get(global_manager.set_mup.remote(mup))
 
   ########################################################################################################
   #Now implement the full ALM algorithm
@@ -381,7 +389,6 @@ def augmented_opt(iteration=0, numSamples=2):
     return initial_conditionst, resultst
     
 if __name__ == "__main__":
-  ray.init()
   #Modify the iteration number to generate different initial conditions
   ics, phat = augmented_opt(10, 100)
   ray.shutdown()
