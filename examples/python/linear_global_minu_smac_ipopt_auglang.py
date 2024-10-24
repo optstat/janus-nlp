@@ -379,6 +379,7 @@ if __name__ == "__main__":
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
+  M = ics.size(0)
   ics_opt = torch.zeros((0,1), dtype=torch.float64, device=device)
   phat_opt = torch.zeros((0,1), dtype=torch.float64, device=device)
   #Also record the failed samples
@@ -386,7 +387,7 @@ if __name__ == "__main__":
   phat_opt_failed = torch.zeros((0,1), dtype=torch.float64, device=device)
 
   #Check the answer by forward propagation
-  M = ics.size(0)
+
   for i in range(M):
     x10 = ics[i,0].item()
     p10 = phat[i,0].item()
@@ -397,6 +398,24 @@ if __name__ == "__main__":
     x1fp = sol.y[1,-1]
     Jfp  = sol.y[2,-1]
     print(f"x1fp-x1f for sample {i}: {x1fp-x1f}")
+    success = phat[i,1]
+    if success == 1:
+      t_span = (0, ft)
+      y0 = [p1fp, ics[i,0]]
+      print(f"Initial conditions using solve_ivp: {y0}")
+      sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',jac=dyns_jacobian, rtol=1e-9, atol=1e-12)
+      p1fp = sol.y[0,-1]
+      x1fp = sol.y[1,-1]
+      print(f"x1fp from solve_ivp: {x1fp}")
+      print(f"p1fp from solve_ivp: {p1fp}")
+      obj = augmented_objective_function(p1fp, ft, 10.0, ics[i][0], ics[i][1])
+      print(f"Objective function value: {obj}")
+      ics_opt = torch.cat((ics_opt, ics[i].reshape(1,1)))
+      phat_opt = torch.cat((phat_opt, phat[i,0:1].reshape(1,1)))
+    else:
+      ics_opt_failed = torch.cat((ics_opt_failed, ics[i,:].reshape(1,1)))
+      phat_opt_failed = torch.cat((phat_opt_failed, phat[i,0:3].reshape(1,1)))
+
   
   #Now save the optimal initial conditions and the optimal parameters in a file using pickle
   #in double precision
