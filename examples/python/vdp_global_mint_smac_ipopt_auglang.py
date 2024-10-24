@@ -1034,7 +1034,9 @@ def do_optimize(initial_condition):
     print(f"Initial etap: {etap}")
     
     while (cnorms > 1.0e-6).any() and count < 5:
-      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(ic, xopt, lambdap, mup, omegap.mean())
+      #Need to convert to batch tensors
+      xics = torch.tensor([ic], dtype=torch.float64, device=device).unsqueeze(0)
+      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(xics, xopt, lambdap, mup, omegap.mean())
       if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
         print(f'Finished optimization')
         break
