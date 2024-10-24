@@ -30,7 +30,7 @@
 *.exe
 *.out
 *.app
-out*.txt
+*out*.txt
 
 # Build and distribution directories
 /build
