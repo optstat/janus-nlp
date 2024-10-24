@@ -8,7 +8,7 @@ import pickle
 
 import janus_nlp
 from torch.autograd import gradcheck
-from smac.runhistory.dataclasses import TrialValue, TrialInfo
+
 #Implementation of the Augmented Lagrangian function using PyTorch
 #and Adam as the optimizer
 
@@ -49,10 +49,28 @@ u3max = 0.0
 p10min, p10max = -5.0, 5.0
 p20min, p20max = -5.0, 5.0
 ftmin, ftmax   = 1.0, 25.0
-mup = 0.01
-ic = None
+# Define an actor class to manage global variables like 'mup'
+@ray.remote
+class GlobalStateManager:
+    def __init__(self):
+        self.mup = 1.0
+        self.ic = None
 
+    def set_mup(self, new_value):
+        self.mup = new_value
 
+    def get_mup(self):
+        return self.mup
+    
+    def set_ic(self, new_ic):
+        self.ic=new_ic
+
+    def get_ic(self):
+        return self.ic
+
+ray.init()
+
+global_manager = GlobalStateManager.remote()
 
 
 # Define normalization and standardization functions
@@ -660,7 +678,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
             n=3*M,
             m=0,
             problem_obj=problem,
-            lb=xlb,
+      lb=xlb,
             ub=xub,
             cl=[],
             cu=[],
@@ -924,30 +942,34 @@ def augmented_objective_function(p10, p20, ft, lambdap1, lambdap2, mup, x10, x20
     return obj
 
 
+# Adjust your objective function if necessary to incorporate initial conditions and seeds
 
+def optimize_hyperparameters_smac(config, seed=0):
+    mup=ray.get(global_manager.get_mup.remote())
+    p1 = config["p1"]
+    p2 = config["p2"]
+    ft = config["ft"]
+    lambdap1 = config["lambdap1"]
+    lambdap2 = config["lambdap2"]
+    initial_condition=ray.get(global_manager.get_ic.remote())
+    x10 = initial_condition[0]
+    x20 = initial_condition[1]
+    obj= augmented_objective_function(p1, p2, ft, lambdap1, lambdap2, mup, x10, x20)
+    print(f"Optimizing with p1={p1}, p2={p2} and ft={ft} and mup={mup}")
+    print(f"Objective function value: {obj}")
+    return obj
 
 
 
 
 # Function to run SMAC with the initial condition list and the objective function with a seed
 
-def initialize_smac(scenario, overwrite=False):
-    # SMAC facade using your objective function
-    def optimize_hyperparameters_smac(config, seed=0):
-      global mup, ic
-      p1 = config["p1"]
-      p2 = config["p2"]
-      ft = config["ft"]
-      lambdap1 = config["lambdap1"]
-      lambdap2 = config["lambdap2"]
-      x10 = ic[0]
-      x20 = ic[1]
-      obj= augmented_objective_function(p1, p2, ft, lambdap1, lambdap2, mup, x10, x20)
-      print(f"Optimizing with p1={p1}, p2={p2} and ft={ft} and mup={mup} and initial conditions {ic}", flush=True)    
-      print(f"Objective function value: {obj}")
-      return obj
+def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
-    smac = HyperparameterOptimizationFacade(scenario=scenario, target_function=optimize_hyperparameters_smac, overwrite=overwrite)
+
+    ray.get(global_manager.set_ic.remote(initial_condition))
+    # SMAC facade using your objective function
+    smac = HyperparameterOptimizationFacade(scenario=scenario, target_function=optimize_hyperparameters_smac, overwrite=True)
 
     # Optimize hyperparameters
     return smac
@@ -955,13 +977,12 @@ def initialize_smac(scenario, overwrite=False):
 
 
 @ray.remote
-def do_optimize(initial_condition):
-  global mup, ic
+def do_optimize(initial_conditions):
   lambdap = np.asarray([0.0, 0.0]).astype(np.float64)
-   
+ 
   mup = 0.01
-  ic = initial_condition
 
+  ray.get(global_manager.set_mup.remote(mup))
 
   count = 0
   p1 = 0.0
@@ -972,48 +993,47 @@ def do_optimize(initial_condition):
   ########################################################
   converged = False
 
-    
-
-  while count < 5:
-    count = count + 1
-    # Define the configuration space
-    # This is a warm start because the defaults are the results of the previous optimization
-    cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
+  # Define the configuration space
+  cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
                                                                 "p2": Float("p2", bounds=(p20min, p20max), default=p2),
                                                                 "ft": Float("ft", bounds=(ftmin, ftmax), default=ft),
                                                                 "lambdap1": Constant("lambdap1", value=lambdap[0]),
                                                                 "lambdap2": Constant("lambdap2", value=lambdap[1]) })
+    
+  # Run SMAC to optimize the objective function
+  scenario = Scenario(cs, deterministic=False, n_trials=1000)
+  optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
 
-    # Run SMAC to optimize the objective function
-    scenario = Scenario(cs, n_trials=1000)
-    optimizer = initialize_smac(scenario, overwrite=True)
-
+  while count < 5:
+    count = count + 1
+    
     incumbent = optimizer.optimize()
     print(f"Optimal hyperparameters: {incumbent}")
     p1 = incumbent["p1"]
     p2 = incumbent["p2"]
     ft = incumbent["ft"]
     t_span = (0, ft)
-    y0 = [p1, p2, ic[0], ic[1]]
+    y0 = [p1, p2, initial_conditions[0], initial_conditions[1]]
     sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-6, atol=1e-9)
     x1fp = sol.y[2,-1]
     x2fp = sol.y[3,-1]
     cs = np.asarray([x1fp+np.abs(x1fp), x2fp-x2f])
     cnorms = np.linalg.norm([x1fp+np.abs(x1fp), x2fp-x2f])
     if cnorms < 1e-3:
-      print(f"cnorms converged to {cnorms} count {count} for initial conditions: {initial_condition}")
+      print(f"cnorms converged to {cnorms} count {count} for initial conditions: {initial_conditions}")
       converged = True
       break
     else:
-      converged = False
-      print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_condition}")
+        converged = False
+      print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
+      ray.get(global_manager.set_mup.remote(mup))
 
   ########################################################################################################
   #Now implement the full ALM algorithm
   #Propagate the solution to initialize the parameters
-  #xopt = phat
-  #xic = ics
+  #xopt -u= phat
+  #xic = i/ cs
   if converged:
     lambdap = torch.zeros((1,2), dtype=torch.float64, device=device)
     #We keep mup the same as from the penalty method.
@@ -1022,10 +1042,11 @@ def do_optimize(initial_condition):
     etap = mup.pow(0.1).reciprocal()
 
     #####################################################
-    #Augmented Lagrangian optimization 
+    #Augmente'd Lagrangian optimization 
     #Convert to tensors
-    count = 0
+    count = k0
     cnorms = torch.ones((1,1), dtype=torch.float64, device=device)*10.0
+    ics = torch.tensor(initial_conditions, dtype=torch.float64, device=device).reshape(1, 2)
     xopt = torch.tensor([[p1, p2, ft]], dtype=torch.float64, device=device)
     print(f"Initial guess: {xopt}")
     print(f"Initial lambdap: {lambdap}")
@@ -1098,7 +1119,7 @@ def augmented_opt(iteration=0, numSamples=2):
     return initial_conditionst, resultst
     
 if __name__ == "__main__":
-  ray.init()
+
   #Modify the iteration number to generate different initial conditions
   ics, phat = augmented_opt(7, 100)
   ray.shutdown()
