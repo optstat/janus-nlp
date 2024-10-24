@@ -228,7 +228,7 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
       p1 = config["p1"]
       x10 = initial_condition[0]
       obj= augmented_objective_function(p1, ft, mup, x10)
-      print(f"Optimizing with p1={p1}, and ft={ft}")
+      print(f"Optimizing with p1={p1}, and ft={ft} mu = {mup} x10 = {x10}")
       print(f"Objective function value: {obj}")
       return obj
 
@@ -241,7 +241,7 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
 @ray.remote
 def do_optimize(initial_conditions):
-  global mup
+  global mup, x1f
   mup = 0.01
   count = 0
   p1 = 0.0
@@ -249,18 +249,18 @@ def do_optimize(initial_conditions):
   #Penalty method with Global Bayesian Optimization 
   ########################################################
   converged = False
-  # Define the configuration space
-  cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
-                                                            "mup": Constant("mup", value=mup) })
-  scenario = Scenario(cs, deterministic=False, n_trials=5000)
-  
-  optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
   
 
 
 
   while count < 10:
     count = count + 1
+    # Define the configuration space
+    cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
+    scenario = Scenario(cs, deterministic=False, n_trials=5000)
+  
+    optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
+
     incumbent=optimizer.optimize()
     
     
@@ -269,6 +269,7 @@ def do_optimize(initial_conditions):
     p1 = incumbent["p1"]
     t_span = (0, ft)
     y0 = [p1, initial_conditions[0], 0.0]
+    #Check if the solution is close to the final point
     sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-6, atol=1e-9)
     x1fp = sol.y[0,-1]
     cs = np.asarray([x1fp-x1f])
