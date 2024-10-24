@@ -252,7 +252,7 @@ def do_optimize(initial_conditions):
   # Define the configuration space
   cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1),
                                                             "mup": Constant("mup", value=mup) })
-  scenario = Scenario(cs, deterministic=False, n_trials=100)
+  scenario = Scenario(cs, deterministic=False, n_trials=5000)
   
   optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
   
@@ -375,7 +375,7 @@ def augmented_opt(iteration=0, numSamples=2):
 if __name__ == "__main__":
   ray.init()
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(0, 2)
+  ics, phat = augmented_opt(0, 1)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
