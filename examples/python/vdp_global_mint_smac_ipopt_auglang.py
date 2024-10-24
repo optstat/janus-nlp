@@ -49,6 +49,23 @@ u3max = 0.0
 p10min, p10max = -5.0, 5.0
 p20min, p20max = -5.0, 5.0
 ftmin, ftmax   = 1.0, 25.0
+# Define an actor class to manage global variables like 'mup'
+@ray.remote
+class GlobalStateManager:
+    def __init__(self):
+        self.mup = 1.0
+
+    def set_mup(self, new_value):
+        self.mup = new_value
+
+    def get_mup(self):
+        return self.mup
+
+
+
+ray.init()
+
+global_manager = GlobalStateManager.remote()
 
 
 # Define normalization and standardization functions
@@ -927,12 +944,12 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
     # Adjust your objective function if necessary to incorporate initial conditions and seeds
     def optimize_hyperparameters_smac(config, seed=0):
+      mup = ray.get(global_manager.get_mup.remote())
       p1 = config["p1"]
       p2 = config["p2"]
       ft = config["ft"]
       lambdap1 = config["lambdap1"]
       lambdap2 = config["lambdap2"]
-      mup = config["mup"]
       x10 = initial_condition[0]
       x20 = initial_condition[1]
       obj= augmented_objective_function(p1, p2, ft, lambdap1, lambdap2, mup, x10, x20)
@@ -947,10 +964,15 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
     # Optimize hyperparameters
     return smac
 
+
+
 @ray.remote
 def do_optimize(initial_conditions):
   lambdap = np.asarray([0.0, 0.0]).astype(np.float64)
+ 
   mup = 0.01
+
+  ray.get(global_manager.set_mup.remote(mup))
 
   count = 0
   p1 = 0.0
@@ -966,8 +988,7 @@ def do_optimize(initial_conditions):
                                                                 "p2": Float("p2", bounds=(p20min, p20max), default=p2),
                                                                 "ft": Float("ft", bounds=(ftmin, ftmax), default=ft),
                                                                 "lambdap1": Constant("lambdap1", value=lambdap[0]),
-                                                                "lambdap2": Constant("lambdap2", value=lambdap[1]),
-                                                                "mup": Constant("mup", value=mup) })
+                                                                "lambdap2": Constant("lambdap2", value=lambdap[1]) })
     
   # Run SMAC to optimize the objective function
   scenario = Scenario(cs, deterministic=False, n_trials=1000)
@@ -996,16 +1017,8 @@ def do_optimize(initial_conditions):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
-    #update the scenario mup
-    config_space = optimizer.scenario.configspace
+      ray.get(global_manager.set_mup.remote(mup))
 
-    # Remove the existing 'mup' parameter if it exists
-    if "mup" in config_space:
-      config_space.get_hyperparameter("mup").value = mup
-    else:
-      # Add a new constant if it's not already in the config space
-      config_space.add_hyperparameter(Constant("mup", mup))
-    optimizer.scenario.configspace = config_space
   ########################################################################################################
   #Now implement the full ALM algorithm
   #Propagate the solution to initialize the parameters
@@ -1096,9 +1109,9 @@ def augmented_opt(iteration=0, numSamples=2):
     return initial_conditionst, resultst
     
 if __name__ == "__main__":
-  ray.init()
+
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(6, 100)
+  ics, phat = augmented_opt(7, 100)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
