@@ -1034,7 +1034,7 @@ def do_optimize(initial_condition):
     print(f"Initial etap: {etap}")
     
     while (cnorms > 1.0e-6).any() and count < 5:
-      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(ics, xopt, lambdap, mup, omegap.mean())
+      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(ic, xopt, lambdap, mup, omegap.mean())
       if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
         print(f'Finished optimization')
         break
