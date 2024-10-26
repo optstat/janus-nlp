@@ -186,7 +186,6 @@ namespace janus
               p10td.d.index_put_({Slice(), 0, 0}, 1.0); // This is an independent variable whose sensitivity we are interested in
               auto x10td = TensorDual(xic.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
               x10td.d.index_put_({Slice(), 0, 1}, 1.0); // This is an independent variable whose sensitivity we are interested in
-              auto ustartd = calc_control(p10td, x10td);
               auto ft = TensorDual(x.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
               ft.d.index_put_({Slice(), 0, 2}, 1.0); // Set the dependency to itself
 
