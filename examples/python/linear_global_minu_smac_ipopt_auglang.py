@@ -165,7 +165,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   sol = torch.tensor(sol).reshape((M,3))
  
   [res, grads, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params)
+                              janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
 
   return res, sol, grads, cs, cnorm, jac
 
@@ -255,7 +255,7 @@ def do_optimize(initial_conditions):
     count = count + 1
     # Define the configuration space
     cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
-    scenario = Scenario(cs, deterministic=False, n_trials=5000)
+    scenario = Scenario(cs, deterministic=False, n_trials=2500)
   
     optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
 
