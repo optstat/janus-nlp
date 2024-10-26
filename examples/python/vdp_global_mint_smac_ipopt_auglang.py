@@ -555,7 +555,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
   [res, grads, yend, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params, False)
+                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params, True)
 
   return res, sol, grads, cs, cnorm, jac
 
@@ -875,7 +875,7 @@ def do_optimize(initial_condition):
     janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
     
     [rest, gradst, yend, cst, cnormt, jact] = \
-                              janus_nlp.mint_auglangr_propagate(xicst, x0t, lambdapt, mupt, params, False)
+                              janus_nlp.mint_auglangr_propagate(xicst, x0t, lambdapt, mupt, params, True)
 
     x1fp = sol.y[2:3,-1].reshape((1,1))
     x2fp = sol.y[3:4,-1].reshape((1,1))
