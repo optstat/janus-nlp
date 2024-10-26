@@ -105,7 +105,7 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       janus_nlp.set_auglangr_x0(self.xics[:,0], self.xics[:,1])
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
  
-      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, False)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, True)
       res = obj.sum().flatten().numpy()
       if res < self.obj:
          self.obj = res
@@ -121,7 +121,7 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
  
-      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, False)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, True)
       print(f"Gradients: {grads}")
       return grads.squeeze().flatten().numpy()
     
