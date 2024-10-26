@@ -108,7 +108,7 @@ namespace janus
               auto one = TensorDual::ones_like(x1);
               //The control is treated as an independent variable
               auto u1star = calc_control(p1.r, x1.r);
-              auto dp1dt = -a*p1;
+              auto dp1dt = a*p1;
               auto dx1dt = a*x1 +b*u1star;
               auto dJdt = 0.5*u1star.square()*one;
 
@@ -134,7 +134,7 @@ namespace janus
                                        torch::zeros({y.r.size(0), 3, 3, y.d.size(2)}, torch::kFloat64));
               auto one = TensorDual::ones_like(x1);
               //-a*p1
-              jac.index_put_({Slice(), Slice(0, 1), 0}, -one*a);
+              jac.index_put_({Slice(), Slice(0, 1), 0}, one*a);
               //a*x1 +b*u1star;
               jac.index_put_({Slice(), Slice(1, 2), 1}, one*a);
               

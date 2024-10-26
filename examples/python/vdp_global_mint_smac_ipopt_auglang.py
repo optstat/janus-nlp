@@ -83,143 +83,6 @@ def vdp(x, x10, x1f, x20, x2f):
 
 
 
-class VdpNecCond(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input, x10, x20, x1f, x2f, lambdap, mup):  
-        # Save input for backward pass
-        # Perform your custom forward computation
-        p2 = input[:, 1:2]
-        x10t = torch.ones_like(p2) * x10
-        x20t = torch.ones_like(p2) * x20
-        x1ft = torch.ones_like(p2) * x1f
-        x2ft = torch.ones_like(p2) * x2f
-
-        janus_nlp.set_auglangr_x0(x10t, x20t)
-        janus_nlp.set_auglangr_xf(x1ft, x2ft)
-        janus_nlp.set_auglangr_mu(mu)
-        #            std::tuple<torch::Tensor, torch::Tensor> mint_auglangr_propagate(const torch::Tensor &x,
-        #                                                                     const torch::Tensor &lambdap,
-        #                                                                     const torch::Tensor &mup,           
-        #                                                                     const torch::Tensor &params)
-        params = torch.tensor([1.0e-6, 1.0e-9], dtype=torch.float64)
-        output, cm, grads, jac = janus_nlp.mint_auglangr_propagate(input, lambdap, mup, params)
-        ctx.save_for_backward(grads.clone())
-        #ctx.save_for_backward(input)
-        #output = input ** 2  # Simple operation
-        return output.clone(), cm.clone()
-
-    @staticmethod
-    def backward(ctx, grad_output, grad_cm):
-        # Retrieve the saved input
-        grads,  = ctx.saved_tensors
-        # Define the custom gradient
-        #print(f"grad_output: {grad_output}")
-        #print(f"grads: {grads}")
-
-        return grads*grad_output, None, None, None, None, None, None
-
-class VDPMintIpopt(cyipopt.Problem):
-    def __init__(self, x10, x1f, x20, x2f, mu, W):
-        self.x10 = x10
-        self.x1f = x1f
-        self.x20 = x20
-        self.x2f = x2f
-        self.x10t = torch.tensor([[self.x10]], dtype=dtype, device=device)
-        self.x20t = torch.tensor([[self.x20]], dtype=dtype, device=device)
-        self.x1ft = torch.tensor([[self.x1f]], dtype=dtype, device=device)
-        self.x2ft = torch.tensor([[self.x2f]], dtype=dtype, device=device)
-        self.W = W
-        self.mu = mu
-        self.rtol = 1.0e-6
-        self.atol = 1.0e-6
-        janus_nlp.set_auglangr_x0(self.x10t, self.x20t)
-        janus_nlp.set_auglangr_xf(self.x1ft, self.x2ft)
-        janus_nlp.set_auglangr_mu(mu)
-        janus_nlp.set_auglangr_W(W)
-    
-
-    def objective(self, x):
-      p2 = x[0]
-      ft = x[1]
-      p2t = torch.tensor([[p2]], dtype=dtype, device=device)
-      #H = p1*x2+p2*mu*(1-x1**2)*x2-p2*x1+p2*ustar+0.5*W*ustar*ustar+1
-      ustar, p1t = janus_nlp.calc_ustar_p1(p2t, self.x10t, self.x20t)
-      p1 = p1t.item()
-      xt = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
-      params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
-
-      [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
-
-      return obj.flatten().numpy()
-    
-    def gradient(self, x):
-      p2 = x[0]
-      ft = x[1]
-      p2t = torch.tensor([[p2]], dtype=dtype, device=device)
-
-      ustar, p1t = janus_nlp.calc_ustar_p1(p2t, self.x10t, self.x20t)
-      p1 = p1t.item()
-      xt = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
-      params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
-
-      [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
-
-      return grads[:,1:].flatten().numpy()
-
-    
-    def constraints(self, x):
-        p2 = x[0]
-        ft = x[1]
-        p2t = torch.tensor([[p2]], dtype=dtype, device=device)
-
-        ustar, p1t = janus_nlp.calc_ustar_p1(p2t, self.x10t, self.x20t)
-        p1 = p1t.item()
-        xt = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
-        params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
-
-        [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
-        print(f"Errors: {errors}")
-        return errors[:,:2].flatten().numpy()
-    
-    def jacobian_exact(self, x):
-        p2 = x[0]
-        ft = x[1]
-        p2t = torch.tensor([[p2]], dtype=dtype, device=device)
-
-        ustar, p1t = janus_nlp.calc_ustar_p1(p2t, self.x10t, self.x20t)
-        p1 = p1t.item()
-        xt = torch.tensor([p1, p2, ft], dtype=dtype, device=device).unsqueeze(0)
-        params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
-
-        [obj, grads, errors, jac] = janus_nlp.mint_propagate(xt, params)
-        print(f'Jacobian: {jac}')
-        jacl = jac[:,:,1:].squeeze().flatten().numpy()
-        print(f"Returning Jacobian: {jacl}")
-        return jacl
-
-    def jacobian(self, x):
-        p2 = x[0]
-        ft = x[1]
-        xc = x.copy()
-        jac = np.zeros((2,2))
-        h = 1.0e-8
-        xph = xc.copy()
-        xph[0] = xc[0]+h
-        gph = self.constraints(xph)
-        xmh = xc.copy()
-        xmh[0] = xc[0]-h
-        gmh = self.constraints(xmh)
-        jac[:,0] = (gph-gmh)/(2.0*h)
-
-        h = 1.0e-8
-        xph = xc.copy()
-        xph[1] = xc[1]+h
-        gph = self.constraints(xph)
-        xmh = xc.copy()
-        xmh[1] = xc[1]-h
-        gmh = self.constraints(xmh)
-        jac[:,1] = (gph-gmh)/(2.0*h)
-        return jac
 
 
 class VDPAugPMPIpopt(cyipopt.Problem):
@@ -240,11 +103,9 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
 
       janus_nlp.set_auglangr_x0(self.xics[:,0], self.xics[:,1])
-      janus_nlp.set_auglangr_mu(mu)
-      janus_nlp.set_auglangr_W(W)
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
  
-      [obj, grads, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, False)
       res = obj.sum().flatten().numpy()
       if res < self.obj:
          self.obj = res
@@ -257,12 +118,10 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       xt = torch.tensor(x).reshape(self.M,3)
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
       janus_nlp.set_auglangr_x0(self.xics[:,0], self.xics[:,1])
-      janus_nlp.set_auglangr_mu(mu)
-      janus_nlp.set_auglangr_W(W)
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
  
-      [obj, grads, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, False)
       print(f"Gradients: {grads}")
       return grads.squeeze().flatten().numpy()
     
@@ -650,9 +509,11 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   print(f'len(xlb): {len(xlb)}')
   print(f'len(xub): {len(xub)}')
   params = torch.tensor([problem.rtol, problem.atol], dtype=torch.float64)
-  
-  [res, grads, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
+  janus_nlp.set_auglangr_x0(xics[:,0], xics[:,1])
+  janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
+
+  [res, grads, yend, cs, cnorm, jac] = \
+                              janus_nlp.mint_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params, False)
 
   scaling_factor = 1.0/res.abs().item()
   print(f'Problem scaling_factor={scaling_factor}')
@@ -690,9 +551,11 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
      sol = problem.sol
   print(f"Received info: {info}")
   sol = torch.tensor(sol).reshape((M,3))
- 
-  [res, grads, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params)
+  janus_nlp.set_auglangr_x0(xics[:,0], xics[:,1])
+  janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
+
+  [res, grads, yend, cs, cnorm, jac] = \
+                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params, False)
 
   return res, sol, grads, cs, cnorm, jac
 
@@ -995,11 +858,32 @@ def do_optimize(initial_condition):
     ft = incumbent["ft"]
     t_span = (0, ft)
     y0 = [p1, p2, ic[0], ic[1]]
-    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-6, atol=1e-9)
-    x1fp = sol.y[2,-1]
-    x2fp = sol.y[3,-1]
-    cs = np.asarray([x1fp+np.abs(x1fp), x2fp-x2f])
-    cnorms = np.linalg.norm([x1fp+np.abs(x1fp), x2fp-x2f])
+    print(f'y0 passed into solve_ivp: {y0}')
+    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac=dyns_jacobian, rtol=1e-3, atol=1e-6)
+    xicst = torch.tensor([ic], dtype=torch.float64, device=device)
+    print(f'xicst: {xicst}')
+    x0t = torch.tensor([[p1, p2, ft]], dtype=torch.float64, device=device)
+    print(f'x0t: {x0t}')
+    lambdapt = torch.zeros((1,2), dtype=torch.float64, device=device)
+    print(f'lambdapt: {lambdapt}')
+    mupt = torch.ones((1,1), dtype=torch.float64, device=device)*mup
+    print(f'mupt: {mupt}')
+    params = torch.tensor([1.0e-3, 1.0e-6], dtype=torch.float64, device=device)
+    print(f'params: {params}')
+    #Perform a check of the integrator using Ipopt
+    janus_nlp.set_auglangr_x0(xicst[:,0], xicst[:,1])
+    janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
+    
+    [rest, gradst, yend, cst, cnormt, jact] = \
+                              janus_nlp.mint_auglangr_propagate(xicst, x0t, lambdapt, mupt, params, False)
+
+    x1fp = sol.y[2:3,-1].reshape((1,1))
+    x2fp = sol.y[3:4,-1].reshape((1,1))
+    cs = np.concatenate((x1fp+np.abs(x1fp), x2fp-x2f), axis=1)
+    cnorms = np.linalg.norm(cs, ord=2, axis=1, keepdims=True)
+    print(f'yend from ipopt: {yend} versus sol.y[:,-1]={sol.y[:,-1]}')
+    print(f'Check cnorm from ipopt: {cnormt} versus cnorm from scipy: {cnorms}')
+
     if cnorms < 1e-3:
       print(f"cnorms converged to {cnorms} count {count} for initial conditions: {initial_condition}")
       converged = True

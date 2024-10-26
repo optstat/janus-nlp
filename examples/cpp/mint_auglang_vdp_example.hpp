@@ -39,10 +39,9 @@ namespace janus
             torch::Tensor x10 = torch::tensor({1.0}, {torch::kFloat64});
             torch::Tensor x20 = torch::tensor({10.0}, {torch::kFloat64});
             int MaxNbrStep = 10000; // Limit the number of steps to avoid long running times
-            double u1min = 0.0, u2min = 2.0, u3min = -1.0;
-            double u1max = 0.0, u2max = 5.0, u3max = 1.0;
-            double mu = 1.0;
-            double W = 0.01;
+            double u1min = 0.0, u2min = 1.0, u3min = 0.0;
+            double u1max = 0.0, u2max = 100.0, u3max = 0.0;
+
 
             TensorDual Jfunc(const TensorDual &F)
             {
@@ -66,15 +65,6 @@ namespace janus
               x20 = x2;
             }
 
-            void set_mu(double muval)
-            {
-              mu = muval;
-            }
-
-            void set_W(double Wval)
-            {
-              W = Wval;
-            }
 
           void set_ulimits(const double &u1minval, const double &u2minval, const double &u3minval,
                            const double &u1maxval, const double &u2maxval, const double &u3maxval)
@@ -122,8 +112,8 @@ namespace janus
             u2star.index_put_({~m2}, u2min);
             auto u3star = torch::zeros_like(p2);
             auto m3 = p2 < 0.0;
-            u2star.index_put_({m3}, u3max);
-            u2star.index_put_({~m3}, u3min);
+            u3star.index_put_({m3}, u3max);
+            u3star.index_put_({~m3}, u3min);
             return {u1star, u2star, u3star};
           }
 
@@ -156,6 +146,10 @@ namespace janus
               auto p2 = p.index({Slice(), Slice(1, 2)});
               auto p1 = p.index({Slice(), Slice(0, 1)});
               auto [u1star, u2star, u3star] = calc_control(p1.r,p2.r,x1.r,x2.r);
+              std::cerr << "u1star = " << u1star << std::endl;
+              std::cerr << "u2star = " << u2star << std::endl;
+              std::cerr << "u3star = " << u3star << std::endl;
+
               //H=p1*x2+p2*mu*(1-x1*x1)*x2-p2*x1+p2*ustar+1;
               auto dp1dt = p2 * u2star * (-2 * x1) * x2 - p2;
               auto dp2dt = p1 + p2 * u2star * (1 - x1 * x1);
@@ -220,13 +214,17 @@ namespace janus
              */
             std::tuple<torch::Tensor, torch::Tensor, 
                        torch::Tensor, torch::Tensor,
-                       torch::Tensor> 
+                       torch::Tensor, torch::Tensor> 
                        mint_auglangr_propagate(const torch::Tensor &xic,
                                                const torch::Tensor &x,
                                                const torch::Tensor &lambdap,
                                                const torch::Tensor &mup,           
-                                               const torch::Tensor &params)
+                                               const torch::Tensor &params,
+                                               const bool rescale)
             {
+              std::cerr << "Starting the augmented Langrangian calculation" << std::endl;
+              std::cerr << "xic = " << xic << std::endl;
+              std::cerr << "x = " << x << std::endl;
               // set the device
               // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
               int M = x.size(0);
@@ -252,9 +250,6 @@ namespace janus
               x10td.d.index_put_({Slice(), 0, 2}, 1.0); // This is an independent variable whose sensitivity we are interested in
               auto x20td = TensorDual(xic.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
               x20td.d.index_put_({Slice(), 0, 3}, 1.0); // This is an independent variable whose sensitivity we are interested in
-              auto ustartd = calc_control(p10td, p20td, x10td, x20td);
-              //p10td = calc_p1(p10td, p20td, x10td, x20td, ustartd);
-              //H=p1*x2+p2*ustar*(1-x1*x1)*x2-p2*x1+1;
               auto ft = TensorDual(x.index({Slice(), Slice(2, 3)}), torch::zeros({M, 1, D}, x.options()));
               ft.d.index_put_({Slice(), 0, 4}, 1.0); // Set the dependency to itself
 
@@ -299,17 +294,24 @@ namespace janus
               auto p2pf = r.y.index({Slice(), Slice(1, 2)});
               auto x1pf = r.y.index({Slice(), Slice(2, 3)});
               auto x2pf = r.y.index({Slice(), Slice(3, 4)});
+              auto yend = r.y.index({Slice(), Slice(0, 4)});
               //auto ustarpf = calc_control(p1pf, p2pf, x1pf, x2pf);
               auto p0 = y0.r.index({Slice(), Slice(0, 2)});
               //Rescale the constraints to avoid huge fluctuations in the gradients
               auto c1x = x1pf + x1pf.abs();
-              auto normc1xd = torch::norm(c1x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
-              auto scale1 = (1+(1+normc1xd).log()).reciprocal();
-              c1x = TensorDual::einsum("mi, m->mi", c1x, scale1);
+              if (rescale)
+              {
+                auto normc1xd = torch::norm(c1x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
+                auto scale1 = (1+(1+normc1xd).log()).reciprocal();
+                c1x = TensorDual::einsum("mi, m->mi", c1x, scale1);
+              }
               auto c2x = x2pf;
-              auto normc2xd = torch::norm(c2x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
-              auto scale2 = (1+(1+normc2xd).log()).reciprocal();
-              c2x = TensorDual::einsum("mi, m->mi",c2x,scale2);
+              if ( rescale)
+              {
+                auto normc2xd = torch::norm(c2x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
+                auto scale2 = (1+(1+normc2xd).log()).reciprocal();
+                c2x = TensorDual::einsum("mi, m->mi",c2x,scale2);
+              }
               //auto [u1starf, u2starf] = calc_control(p1pf, p2pf, x1pf, x2pf);
 
               
@@ -340,7 +342,7 @@ namespace janus
               
               
               auto errors = torch::cat({c1x.r, c2x.r}, 1);
-              auto error_norm = torch::cat({c1x.r, c2x.r}, 1).norm();
+              auto error_norm = errors.norm(2, {1}, true);
               //The jacobian is block diagonal
               auto jac = torch::zeros({M, 2, 3}, x.options());
               jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 1)})); // p1
@@ -351,7 +353,7 @@ namespace janus
               jac.index_put_({Slice(), Slice(1, 2), Slice(1, 2)}, c2x.d.index({Slice(), Slice(0,1), Slice(1, 2)})); // p2
               jac.index_put_({Slice(), Slice(1, 2), Slice(2, 3)}, c2x.d.index({Slice(), Slice(0,1), Slice(4, 5)})); // ft
            
-              return std::make_tuple(f.r, grads, errors, error_norm, jac);
+              return std::make_tuple(f.r, grads, yend.r, errors, error_norm, jac);
             }
 
             /**

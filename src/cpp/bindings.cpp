@@ -39,8 +39,6 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("mint_propagate", &janus::nlp::examples::vdp::mint::auglang::mint_propagate, "Objective constraint and its jacobian for the mint example");
     m.def("set_auglangr_xf", &janus::nlp::examples::vdp::mint::auglang::set_xf, "Set the final point for the mint example");
     m.def("set_auglangr_x0", &janus::nlp::examples::vdp::mint::auglang::set_x0, "Set the initial point for the mint example");
-    m.def("set_auglangr_mu", &janus::nlp::examples::vdp::mint::auglang::set_mu, "Set the regularization weight for the mint example");
-    m.def("set_auglangr_W", &janus::nlp::examples::vdp::mint::auglang::set_W, "Set the final state for the mint example");
     m.def("calc_ustar", &janus::nlp::examples::vdp::mint::auglang::calc_ustar, "Calculate the control for the mint example");
     m.def("set_ulimits", &janus::nlp::examples::vdp::mint::auglang::set_ulimits, "Set the control limits for the mint example");
     m.def("linear_minu_set_xf", &janus::nlp::examples::linear::minu::auglang::set_xf, "Set the final point for the linear minu example");

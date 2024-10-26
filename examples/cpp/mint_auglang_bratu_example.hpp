@@ -124,7 +124,7 @@ namespace janus
               // return jacv;
               auto x1 = y.index({Slice(), Slice(1, 2)});
               auto p1 = y.index({Slice(), Slice(0, 1)});
-              auto J = y.index({Slice(), Slice(2, 3)});
+              auto J  = y.index({Slice(), Slice(2, 3)});
       
               auto u1star = calc_control(p1, x1);
   

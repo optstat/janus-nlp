@@ -182,7 +182,7 @@ def dyns_aug(t, y):
     x1 = y[1]
     J  = y[2]
     ustar = -b*p1
-    dp1dt = -a*p1
+    dp1dt = a*p1
     dx1dt = a*x1+b*ustar
     dJdt = 0.5*ustar**2
     return np.stack([dp1dt, dx1dt, dJdt], axis=-1)
@@ -196,9 +196,7 @@ def dyns_jacobian(t, y):
     ustar = -b*p1
 
     jac = np.zeros((3,3))
-    jac[0,0]= -a
-    jac[0,1]= a
-    jac[1,0]= 0.0
+    jac[0,0]= a
     jac[1,1]= a
     return jac
 
