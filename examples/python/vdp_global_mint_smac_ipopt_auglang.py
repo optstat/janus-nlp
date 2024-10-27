@@ -86,7 +86,7 @@ def vdp(x, x10, x1f, x20, x2f):
 
 
 class VDPAugPMPIpopt(cyipopt.Problem):
-    def __init__(self, xics, lambdap, mup, x0):
+    def __init__(self, xics, lambdap, mup, x0, target_value=1.0e-6):
         self.M = xics.size(0) #Number of samples
         self.xics = xics
         self.mu = mu
@@ -96,6 +96,7 @@ class VDPAugPMPIpopt(cyipopt.Problem):
         self.mup = mup
         self.obj = 1.0e10
         self.sol = x0
+        self.target_value = target_value
     
 
     def objective(self, x):
@@ -105,7 +106,7 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       janus_nlp.set_auglangr_x0(self.xics[:,0], self.xics[:,1])
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
  
-      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, True)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
       res = obj.sum().flatten().numpy()
       if res < self.obj:
          self.obj = res
@@ -121,10 +122,15 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
  
-      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params, True)
+      [obj, grads, yend, errors, errors_norm, jac] = janus_nlp.mint_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
       print(f"Gradients: {grads}")
       return grads.squeeze().flatten().numpy()
-    
+
+
+    def callback(self, current_x, current_g, current_obj, *args):
+        if current_obj <= self.target_value:
+            return -1  # IPOPT interprets return < 0 as a signal to terminate
+        return 0  # Continue optimization    
     #def constraints(self, x):
     #  pass
       #xt = torch.tensor(x).reshape(self.M,3)
@@ -461,7 +467,7 @@ def batched_objective_function_ipopt(x):
   return res
 
 #The inputs are all tensors
-def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
+def batched_augLang_ipopt(xics, x, lambdap, mup, tol, target_value=1.0e-6):
   # Example bounds for three parameters
   # Define parameter bounds-there are not necessarily the same 
   # as the ones used in the outer optimization
@@ -478,28 +484,21 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   grads   = torch.zeros((M,3), dtype=torch.float64, device=device)
   cs      = torch.zeros((M,5), dtype=torch.float64, device=device)
   cnorm   = torch.zeros((M,), dtype=torch.float64, device=device)
-  problem = VDPAugPMPIpopt(xics, lambdap, mup, x.flatten().numpy())
+  problem = VDPAugPMPIpopt(xics, lambdap, mup, x.flatten().numpy(), target_value)
 
   print(f'problem = {problem}')
   xlb = [0.0 for _ in range(3*M)]
   xub = [0.0 for _ in range(3*M)]
-  #Limit the exploration space
+  #Expand the exploration space to reduce dual infeasibility
+  #at the expense of more initial line search iterations
   for i in range(M):
-    if x[i,0] < 0: 
-      xlb[3*i]   = x[i,0]*2.0
-      xub[3*i]   = x[i,0]*0.5
-    else:
-      xlb[3*i]   = x[i,0]*0.5
-      xub[3*i]   = x[i,0]*2.0
-    if x[i, 1] < 0:   
-      xlb[3*i+1] = x[i, 1]*2.0
-      xub[3*i+1] = x[i, 1]*0.5
-    else:
-      xlb[3*i+1] = x[i, 1]*0.5
-      xub[3*i+1] = x[i, 1]*2.0       
+    xlb[3*i]   = p10min
+    xub[3*i]   = p10max
+    xlb[3*i+1] = p20min
+    xub[3*i+1] = p20max
     #Limit the time to avoid long integrations
-    xlb[3*i+2] = x[i, 2]*0.5
-    xub[3*i+2] = x[i, 2]*2
+    xlb[3*i+2] = ftmin
+    xub[3*i+2] = ftmax
 
 
 
@@ -513,7 +512,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
   [res, grads, yend, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params, False)
+                              janus_nlp.mint_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
 
   scaling_factor = 1.0/res.abs().item()
   print(f'Problem scaling_factor={scaling_factor}')
@@ -535,6 +534,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
       acc_tol = 1.0e-6
   # Set the options
   nlp.add_option('hessian_approximation', 'limited-memory')  # Enable limited memory BFGS (L-BFGS)
+  nlp.add_option('limited_memory_max_history', 10) #Use a gradient based method for scaling
   nlp.add_option('nlp_scaling_method', 'gradient-based') #Use a gradient based method for scaling
   nlp.add_option('obj_scaling_factor', scaling_factor) #Set the scaling factor
   nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
@@ -555,7 +555,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
 
   [res, grads, yend, cs, cnorm, jac] = \
-                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params, True)
+                              janus_nlp.mint_auglangr_propagate(problem.xics, sol, problem.lambdap, problem.mup, params)
 
   return res, sol, grads, cs, cnorm, jac
 
@@ -859,7 +859,7 @@ def do_optimize(initial_condition):
     t_span = (0, ft)
     y0 = [p1, p2, ic[0], ic[1]]
     print(f'y0 passed into solve_ivp: {y0}')
-    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac=dyns_jacobian, rtol=1e-3, atol=1e-6)
+    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac=dyns_jacobian, rtol=1e-9, atol=1e-9)
     xicst = torch.tensor([ic], dtype=torch.float64, device=device)
     print(f'xicst: {xicst}')
     x0t = torch.tensor([[p1, p2, ft]], dtype=torch.float64, device=device)
@@ -868,14 +868,14 @@ def do_optimize(initial_condition):
     print(f'lambdapt: {lambdapt}')
     mupt = torch.ones((1,1), dtype=torch.float64, device=device)*mup
     print(f'mupt: {mupt}')
-    params = torch.tensor([1.0e-3, 1.0e-6], dtype=torch.float64, device=device)
+    params = torch.tensor([1.0e-9, 1.0e-9], dtype=torch.float64, device=device)
     print(f'params: {params}')
     #Perform a check of the integrator using Ipopt
     janus_nlp.set_auglangr_x0(xicst[:,0], xicst[:,1])
     janus_nlp.set_ulimits(u1min, u2min, u3min, u1max, u2max, u3max)
     
     [rest, gradst, yend, cst, cnormt, jact] = \
-                              janus_nlp.mint_auglangr_propagate(xicst, x0t, lambdapt, mupt, params, True)
+                              janus_nlp.mint_auglangr_propagate(xicst, x0t, lambdapt, mupt, params)
 
     x1fp = sol.y[2:3,-1].reshape((1,1))
     x2fp = sol.y[3:4,-1].reshape((1,1))
@@ -892,7 +892,10 @@ def do_optimize(initial_condition):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_condition}")
       mup=mup*100.0
-
+    cnorms_global = cnorms
+    p1_global = p1
+    p2_global = p2
+    ft_global = ft
   ########################################################################################################
   #Now implement the full ALM algorithm
   #Propagate the solution to initialize the parameters
@@ -917,10 +920,10 @@ def do_optimize(initial_condition):
     print(f"Initial omegap: {omegap}")
     print(f"Initial etap: {etap}")
     
-    while (cnorms > 1.0e-6).any() and count < 5:
+    while (cnorms > 1.0e-8).any() and count < 5:
       #Need to convert to batch tensors
       xics = torch.tensor([ic], dtype=torch.float64, device=device)
-      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(xics, xopt, lambdap, mup, omegap.mean())
+      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(xics, xopt, lambdap, mup, omegap.mean(), target_value=1.0e-8)
       if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
         print(f'Finished optimization')
         break
@@ -953,11 +956,15 @@ def do_optimize(initial_condition):
         print(f"etap: {etap}")
         print(f"omegap: {omegap}")
     #Update the values
-    p1 = xopt[0,0].item()
-    p2 = xopt[0,1].item()
-    ft = xopt[0,2].item()
-  else:
-     print(f'Failed to converge skipping full ALM')
+    if cnorms_global > cnorms:
+      p1 = xopt[0,0].item()
+      p2 = xopt[0,1].item()
+      ft = xopt[0,2].item()
+    else: #Keep the global values
+      p1 = p1_global
+      p2 = p2_global
+      ft = ft_global
+    
   return p1, p2, ft, converged
 
 def augmented_opt(iteration=0, numSamples=2):

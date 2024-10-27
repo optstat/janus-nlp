@@ -219,8 +219,7 @@ namespace janus
                                                const torch::Tensor &x,
                                                const torch::Tensor &lambdap,
                                                const torch::Tensor &mup,           
-                                               const torch::Tensor &params,
-                                               const bool rescale)
+                                               const torch::Tensor &params)
             {
               std::cerr << "Starting the augmented Langrangian calculation" << std::endl;
               std::cerr << "xic = " << xic << std::endl;
@@ -299,19 +298,19 @@ namespace janus
               auto p0 = y0.r.index({Slice(), Slice(0, 2)});
               //Rescale the constraints to avoid huge fluctuations in the gradients
               auto c1x = x1pf + x1pf.abs();
-              if (rescale)
+              /*if (rescale)
               {
                 auto normc1xd = torch::norm(c1x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
                 auto scale1 = (1+(1+normc1xd).log()).reciprocal();
                 c1x = TensorDual::einsum("mi, m->mi", c1x, scale1);
-              }
+              }*/
               auto c2x = x2pf;
-              if ( rescale)
+              /*if ( rescale)
               {
                 auto normc2xd = torch::norm(c2x.d.index({Slice(), 0, Slice(0,2)}), 2, {1});
                 auto scale2 = (1+(1+normc2xd).log()).reciprocal();
                 c2x = TensorDual::einsum("mi, m->mi",c2x,scale2);
-              }
+              }*/
               //auto [u1starf, u2starf] = calc_control(p1pf, p2pf, x1pf, x2pf);
 
               
@@ -327,14 +326,11 @@ namespace janus
 
               auto grads = torch::zeros_like(x);
               auto dJdp1 =f.d.index({Slice(), 0, Slice(0, 1)});
-              auto dJdp1scale = (1.0+dJdp1.norm()).log();
-              dJdp1 = dJdp1/dJdp1scale;
-               auto dJdp2 =f.d.index({Slice(), 0, Slice(1, 2)});
-              auto dJdp2scale = (1.0+dJdp2.norm()).log();
-              dJdp2 = dJdp2/dJdp2scale;
+              dJdp1 = dJdp1;
+              auto dJdp2 =f.d.index({Slice(), 0, Slice(1, 2)});
+              dJdp2 = dJdp2;
               auto dJdft =f.d.index({Slice(), 0, Slice(2, 3)});
-              auto dJdftscale = (1.0+dJdft.norm()).log();
-              dJdft = dJdft/dJdftscale;
+              dJdft = dJdft;
 
               grads.index_put_({Slice(), 0}, dJdp1); // p1
               grads.index_put_({Slice(), 1}, dJdp2); // p2
