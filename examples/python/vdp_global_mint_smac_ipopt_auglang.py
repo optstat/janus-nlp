@@ -51,8 +51,8 @@ p20min, p20max = -5.0, 5.0
 ftmin, ftmax   = 1.0, 25.0
 mup = 0.01
 ic = None
-
-
+tol_cnorm = 1.0e-6
+tol_omega = 1.0e-6
 
 
 # Define normalization and standardization functions
@@ -126,11 +126,29 @@ class VDPAugPMPIpopt(cyipopt.Problem):
       print(f"Gradients: {grads}")
       return grads.squeeze().flatten().numpy()
 
+    def intermediate(
+            self,
+            alg_mod,
+            iter_count,
+            obj_value,
+            inf_pr,
+            inf_du,
+            mu,
+            d_norm,
+            regularization_size,
+            alpha_du,
+            alpha_pr,
+            ls_trials
+            ):
 
-    def callback(self, current_x, current_g, current_obj, *args):
-        if current_obj <= self.target_value:
-            return -1  # IPOPT interprets return < 0 as a signal to terminate
-        return 0  # Continue optimization    
+        #
+        # Example for the use of the intermediate callback.
+        #
+        print("Objective value at iteration #%d is - %g" % (iter_count, obj_value))
+        if obj_value < self.target_value:
+            print(f'Terminating ipopt optimization with objective value {obj_value}')
+            return False
+
     #def constraints(self, x):
     #  pass
       #xt = torch.tensor(x).reshape(self.M,3)
@@ -834,7 +852,10 @@ def do_optimize(initial_condition):
   #Penalty method with Global Bayesian Optimization 
   ########################################################
   converged = False
-
+  p1_global = p1
+  p2_global = p2
+  ft_global = ft
+  cnorms_global = 100.0
     
 
   while count < 5:
@@ -892,10 +913,12 @@ def do_optimize(initial_condition):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_condition}")
       mup=mup*100.0
-    cnorms_global = cnorms
-    p1_global = p1
-    p2_global = p2
-    ft_global = ft
+    #Keep track of the best solution in case the optimization does not converge
+    if cnorms < cnorms_global:
+      cnorms_global = cnorms
+      p1_global = p1
+      p2_global = p2
+      ft_global = ft
   ########################################################################################################
   #Now implement the full ALM algorithm
   #Propagate the solution to initialize the parameters
@@ -920,13 +943,20 @@ def do_optimize(initial_condition):
     print(f"Initial omegap: {omegap}")
     print(f"Initial etap: {etap}")
     
-    while (cnorms > 1.0e-8).any() and count < 5:
+    while (cnorms > tol_cnorm).any() and count < 5:
       #Need to convert to batch tensors
       xics = torch.tensor([ic], dtype=torch.float64, device=device)
-      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(xics, xopt, lambdap, mup, omegap.mean(), target_value=1.0e-8)
-      if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
+      omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(xics, xopt, lambdap, mup, omegap.mean(), target_value=tol_omega)
+      if (omegap < tol_omega and cnorms < tol_cnorm ).all():
         print(f'Finished optimization')
         break
+      #Keep track of the best solution
+      if cnorms.item() < cnorms_global:
+        cnorms_global = cnorms.item()
+        p1_global = xopt[0,0].item()
+        p2_global = xopt[0,1].item()
+        ft_global = xopt[0,2].item()
+         
 
       count = count + 1
       print(f"Objective function value from ipopt: {omegap}")
@@ -955,17 +985,8 @@ def do_optimize(initial_condition):
         print(f"lambdap: {lambdap}")
         print(f"etap: {etap}")
         print(f"omegap: {omegap}")
-    #Update the values
-    if cnorms_global > cnorms:
-      p1 = xopt[0,0].item()
-      p2 = xopt[0,1].item()
-      ft = xopt[0,2].item()
-    else: #Keep the global values
-      p1 = p1_global
-      p2 = p2_global
-      ft = ft_global
     
-  return p1, p2, ft, converged
+  return p1_global, p2_global, ft_global, converged
 
 def augmented_opt(iteration=0, numSamples=2):
     # Define bounds for the 2D Sobol sequence
