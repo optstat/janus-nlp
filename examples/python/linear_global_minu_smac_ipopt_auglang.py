@@ -33,7 +33,7 @@ b = 1.0
 
 
 class LinearAugPMPIpopt(cyipopt.Problem):
-    def __init__(self, xics, lambdap, mup, x0):
+    def __init__(self, xics, lambdap, mup, x0, target_value=1.0e-6):
         self.M = xics.size(0) #Number of samples
         self.xics = xics
         self.rtol = 1.0e-9
@@ -42,6 +42,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
         self.mup = mup
         self.obj = 1.0e10
         self.sol = x0
+        self.target_value = target_value
     
 
     def objective(self, x):
@@ -78,6 +79,29 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       print(f"Gradients: {grads}")
       return grads.squeeze().flatten().numpy()
     
+    def intermediate(
+            self,
+            alg_mod,
+            iter_count,
+            obj_value,
+            inf_pr,
+            inf_du,
+            mu,
+            d_norm,
+            regularization_size,
+            alpha_du,
+            alpha_pr,
+            ls_trials
+            ):
+
+        #
+        # Example for the use of the intermediate callback.
+        #
+        print("Objective value at iteration #%d is - %g" % (iter_count, obj_value))
+        if obj_value < self.target_value:
+            print(f'Terminating ipopt optimization with objective value {obj_value}')
+            return False
+
 
 
 
@@ -108,12 +132,8 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   xub = [0.0 for _ in range(M)]
   #Limit the exploration space
   for i in range(M):
-    if x[i,0] < 0: 
-      xlb[i]   = x[i,0]*2.0
-      xub[i]   = x[i,0]*0.5
-    else:
-      xlb[i]   = x[i,0]*0.5
-      xub[i]   = x[i,0]*2.0
+    xlb[i]   = p10min
+    xub[i]   = p10max
 
 
 
@@ -123,7 +143,8 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   print(f'len(xlb): {len(xlb)}')
   print(f'len(xub): {len(xub)}')
   params = torch.tensor([problem.rtol, problem.atol], dtype=torch.float64)
-  
+  janus_nlp.linear_minu_set_a(a)
+  janus_nlp.linear_minu_set_b(b)
   [res, grads, cs, cnorm, jac] = \
                               janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
 
@@ -153,7 +174,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   nlp.add_option('acceptable_tol', acc_tol)  # Set tolerance for acceptable objective value
   nlp.add_option('acceptable_iter', 0)  # Allow IPOPT to stop immediately when an acceptable solution is found
   nlp.add_option('print_level', 5)          # Set print level to 5
-  nlp.add_option('max_iter', 10)       # Set the maximum number of iterations.  This should converge very quickly 
+  nlp.add_option('max_iter', 3)       # Set the maximum number of iterations.  This should converge very quickly 
   nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
   #nlp.add_option("derivative_test", "first-order")  # Check the gradient
   
@@ -163,7 +184,8 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
      sol = problem.sol
   print(f"Received info: {info}")
   sol = torch.tensor(sol).reshape((M,3))
- 
+  janus_nlp.linear_minu_set_a(a)
+  janus_nlp.linear_minu_set_b(b) 
   [res, grads, cs, cnorm, jac] = \
                               janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
 
@@ -247,11 +269,13 @@ def do_optimize(initial_conditions):
   #Penalty method with Global Bayesian Optimization 
   ########################################################
   converged = False
-  
+  p1_global = p1
+  cnorms_global = 100.0
 
 
 
-  while count < 10:
+
+  while count < 5:
     count = count + 1
     # Define the configuration space
     cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
@@ -282,7 +306,10 @@ def do_optimize(initial_conditions):
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
       mup=mup*100.0
-
+      #Keep track of the best solution in case the optimization does not converge
+      if cnorms < cnorms_global:
+        cnorms_global = cnorms
+        p1_global = p1
   ########################################################################################################
   #Now implement the full ALM algorithm
   #Propagate the solution to initialize the parameters
@@ -310,9 +337,15 @@ def do_optimize(initial_conditions):
     
     while (cnorms > 1.0e-6).any() and count < 5:
       omegap, xopt, grads, cs, cnorms, jac= batched_augLang_ipopt(ics, xopt, lambdap, mup, omegap.mean())
-      if (omegap < 1.0e-9 and cnorms < 1.0e-6 ).all():
+      if (omegap < 1.0e-6 and cnorms < 1.0e-6 ).all():
         print(f'Finished optimization')
         break
+      #Keep track of the best solution
+      if cnorms.item() < cnorms_global:
+        cnorms_global = cnorms.item()
+        p1_global = xopt[0,0].item()
+      else:
+        break #We are not improving so we can stop
 
       count = count + 1
       print(f"Objective function value from ipopt: {omegap}")
@@ -345,7 +378,7 @@ def do_optimize(initial_conditions):
     p1 = xopt[0,0].item()
   else:
      print(f'Failed to converge skipping full ALM')
-  return p1, converged
+  return p1_global, converged
 
 
 def augmented_opt(iteration=0, numSamples=2):
