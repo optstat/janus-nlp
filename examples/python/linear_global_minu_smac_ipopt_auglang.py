@@ -232,7 +232,7 @@ def augmented_objective_function(p10, ft, mup, x10):
     x1fp = sol.y[1,-1]
     Jfp = sol.y[2,-1]
     print(f"x1fp-x1f: {x1fp-x1f}")
-    obj = Jfp + np.log( 1+0.5*mup*(x1fp-x1f)**2)
+    obj = np.log( 1+0.5*mup*(x1fp-x1f)**2)
     return obj
 
 

@@ -1,7 +1,8 @@
 #ifndef AUGLANG_FVDP_EXAMPLE_HPP
 #define AUGLANG_FVDP_EXAMPLE_HPP
 /**
- * Use the Van Der Pol oscillator as an example
+ * Use the Forced Van Der Pol oscillator as an example
+ * of inverse problem
  * To calculate optimal control for minimum time
  */
 #define HEADER_ONLY
@@ -37,10 +38,6 @@ namespace janus
             torch::Tensor x10 = torch::tensor({1.0}, {torch::kFloat64});
             torch::Tensor x20 = torch::tensor({10.0}, {torch::kFloat64});
             int MaxNbrStep = 10000; // Limit the number of steps to avoid long running times
-            double u1min = 0.0, u2min = 2.0, u3min = -1.0;
-            double u1max = 0.0, u2max = 5.0, u3max = 1.0;
-            double mu = 1.0;
-            double W = 0.01;
 
             TensorDual Jfunc(const TensorDual &F)
             {
@@ -69,74 +66,10 @@ namespace janus
               mu = muval;
             }
 
-            void set_W(double Wval)
-            {
-              W = Wval;
-            }
-
-          void set_ulimits(const double &u1minval, const double &u2minval, const double &u3minval,
-                           const double &u1maxval, const double &u2maxval, const double &u3maxval)
-          {
-            u1min = u1minval;
-            u2min = u2minval;
-            u3min = u3minval;
-            u1max = u1maxval;
-            u2max = u2maxval;
-            u3max = u3maxval;
-          }
-
-          std::tuple<TensorDual, TensorDual, TensorDual> calc_control(const TensorDual &p1,
-                                  const TensorDual &p2,
-                                  const TensorDual &x1,
-                                  const TensorDual &x2)
-          {
-            auto m = p1 < 0.0;
-            auto u1star = TensorDual::zeros_like(p1);
-            u1star.index_put_({m}, u1max);
-            u1star.index_put_({~m}, u1min);
-            auto m2 = p2*(1-x1*x1)*x2 < 0.0;
-            auto u2star = TensorDual::zeros_like(p2);
-            u2star.index_put_({m2}, u2max);
-            u2star.index_put_({~m2}, u2min);
-            auto m3 = p2 < 0.0;
-            auto u3star = TensorDual::zeros_like(p2);
-            u3star.index_put_({m3}, u3max);
-            u3star.index_put_({~m3}, u3min);
-            return {u1star, u2star, u3star};
-          }
-
-          std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> calc_control(const torch::Tensor &p1,
-                                     const torch::Tensor &p2,
-                                     const torch::Tensor &x1,
-                                     const torch::Tensor &x2)
-          {
-            auto u1star = torch::zeros_like(p1);
-            auto m1 = p1 < 0.0;
-            u1star.index_put_({m1}, u1max);
-            u1star.index_put_({~m1}, u1min);
-            auto u2star = torch::zeros_like(p2);
-            auto m2 = p2*(1-x1*x1)*x2 < 0.0;
-            u2star.index_put_({m2}, u2max);
-            u2star.index_put_({~m2}, u2min);
-            auto u3star = torch::zeros_like(p2);
-            auto m3 = p2 < 0.0;
-            u2star.index_put_({m3}, u3max);
-            u2star.index_put_({~m3}, u3min);
-            return {u1star, u2star, u3star};
-          }
 
 
-          
 
-
-          std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> calc_ustar(const torch::Tensor &p1,
-                                     const torch::Tensor &p2,
-                                     const torch::Tensor &x1,
-                                     const torch::Tensor &x2)
-          {
-            return calc_control(p1, p2, x1, x2);
-          }
-
+        
 
             /**
              * Dynamics calculated for the augmented Langrangian formulation
@@ -146,21 +79,18 @@ namespace janus
                                     const TensorDual &params)
             {
               // auto dynsv = evalDynsDual<double>(y, W, hamiltonian);
-              auto x = y.index({Slice(), Slice(2, 4)});
-              auto p = y.index({Slice(), Slice(0, 2)});
               // std::cerr << "Control = " << ustar << std::endl;
-              auto x2 = x.index({Slice(), Slice(1, 2)});
-              auto x1 = x.index({Slice(), Slice(0, 1)});
-              auto p2 = p.index({Slice(), Slice(1, 2)});
-              auto p1 = p.index({Slice(), Slice(0, 1)});
-              auto [u1star, u2star, u3star] = calc_control(p1,p2,x1,x2);
+              auto F = y.index({Slice(), Slice(0, 1)});
+              auto w = y.index({Slice(), Slice(1, 2)});
+              auto x2 = y.index({Slice(), Slice(3, 4)});
+              auto x1 = y.index({Slice(), Slice(2, 3)});
               //H=p1*x2+p2*mu*(1-x1*x1)*x2-p2*x1+p2*ustar+1;
-              auto dp1dt = p2 * u2star * (-2 * x1) * x2 - p2;
-              auto dp2dt = p1 + p2 * u2star * (1 - x1 * x1);
-              auto dx1dt = x2+u1star;
-              auto dx2dt = u2star * (1 - x1 * x1) * x2 - x1 + u3star;
+              auto dFdt = F*0.0;
+              auto dwdt = w*0.0;
+              auto dx1dt = x2;
+              auto dx2dt = mu * (1 - x1 * x1) * x2 - x1 + F*(w*t).sin();
 
-              auto real_dyns = TensorDual::cat({dp1dt, dp2dt, dx1dt, dx2dt});
+              auto real_dyns = TensorDual::cat({dFdt, dwdt, dx1dt, dx2dt});
 
               return real_dyns;
             }
@@ -173,11 +103,10 @@ namespace janus
               // auto jacv = evalJacDual<double>(y, W, hamiltonian);
               // return jacv;
               auto x = y.index({Slice(), Slice(2, 4)});
-              auto p = y.index({Slice(), Slice(0, 2)});
+              auto F = y.index({Slice(), Slice(0, 1)});
+              auto w = y.index({Slice(), Slice(1, 2)});
               auto x2 = x.index({Slice(), Slice(1, 2)});
               auto x1 = x.index({Slice(), Slice(0, 1)});
-              auto p1 = p.index({Slice(), Slice(0, 1)});
-              auto p2 = p.index({Slice(), Slice(1, 2)});
       
               auto [u1star, u2star, u3star] = calc_control(p1, p2, x1, x2);
   
