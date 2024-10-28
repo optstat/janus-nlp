@@ -384,8 +384,8 @@ def do_optimize(initial_conditions):
 
 def augmented_opt(iteration=0, numSamples=2):
     # Define bounds for the 2D Sobol sequence
-    lower_bounds = torch.tensor([-1.0], device=device, dtype=torch.float64)
-    upper_bounds = torch.tensor([1.0], device=device, dtype=torch.float64)
+    lower_bounds = torch.tensor([-0.5], device=device, dtype=torch.float64)
+    upper_bounds = torch.tensor([0.0], device=device, dtype=torch.float64)
     sobol = torch.quasirandom.SobolEngine(dimension=1)
     # Number of initial conditions to generate
     num_initial_conditions = numSamples #Same as the number of samples
