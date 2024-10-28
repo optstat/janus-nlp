@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import ray
 import time
 import pickle
-
+import os
 import janus_nlp
 from scipy.integrate import solve_ivp
 from ConfigSpace import ConfigurationSpace, Float, Constant
@@ -26,7 +26,8 @@ a = 1.0
 b = 1.0
 
 
-
+os.environ["MKL_ENABLE_INSTRUCTIONS"] = "SSE2"
+os.environ["MKL_THREADING_LAYER"] = "GNU"
 
 
 
