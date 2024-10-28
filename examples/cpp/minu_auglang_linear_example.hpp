@@ -242,15 +242,13 @@ namespace janus
 
               auto grads = torch::zeros_like(x);
               grads.index_put_({Slice(), 0}, f.d.index({Slice(), 0, 0})); // p1
-              grads.index_put_({Slice(), 2}, f.d.index({Slice(), 0, 1})); // ft
               
               
               auto errors = torch::cat({c1x.r}, 1);
               auto error_norm = torch::cat({c1x.r}, 1).norm();
               //The jacobian is block diagonal
-              auto jac = torch::zeros({M, 1, 2}, x.options());
-              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 1)})); // p1
-              jac.index_put_({Slice(), Slice(0, 1), Slice(1, 2)}, c1x.d.index({Slice(), Slice(0,1), Slice(1, 2)})); // ft
+              auto jac = torch::zeros({M, 1, 1}, x.options());
+              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 2)})); // p1
 
            
               return std::make_tuple(f.r, grads, errors, error_norm, jac);
