@@ -168,8 +168,8 @@ namespace janus
               // set the device
               // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
               int M = x.size(0);
-              int N = 2; // Length of the state space vector in order [p1, x1, J]
-              int D = 3; // Length of the dual vector in order [p1, x1, J, tf]
+              int N = 3; // Length of the state space vector in order [p1, x1, J]
+              int D = 4; // Length of the dual vector in order [p1, x1, J, tf]
               double rtol = 1e-3;
               double atol = 1e-6;
               if (params.dim() == 1)
@@ -187,7 +187,7 @@ namespace janus
               auto x10td = TensorDual(xic.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
               x10td.d.index_put_({Slice(), 0, 1}, 1.0); // This is an independent variable whose sensitivity we are interested in
               auto ft = TensorDual(x.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
-              ft.d.index_put_({Slice(), 0, 2}, 1.0); // Set the dependency to itself
+              ft.d.index_put_({Slice(), 0, 3}, 1.0); // Set the dependency to itself
 
               TensorDual y = TensorDual(torch::zeros({M, N}, x.options()),
                                         torch::zeros({M, N, D}, x.options()));
@@ -228,10 +228,6 @@ namespace janus
               auto x1pf = r.y.index({Slice(), Slice(1, 2)});
 
               auto c1x = x1pf - x1f;
-              //Normalize the costate 
-              auto normc1xd = torch::norm(c1x.d.index({Slice(), 0, Slice(0,1)}), 2, {1});
-              auto scale1 = (1+(1+normc1xd).log()).reciprocal();
-              c1x = TensorDual::einsum("mi, m->mi", c1x, scale1);
 
               //auto [u1starf, u2starf] = calc_control(p1pf, p2pf, x1pf, x2pf);
 
