@@ -174,7 +174,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   nlp.add_option('acceptable_tol', acc_tol)  # Set tolerance for acceptable objective value
   nlp.add_option('acceptable_iter', 0)  # Allow IPOPT to stop immediately when an acceptable solution is found
   nlp.add_option('print_level', 5)          # Set print level to 5
-  nlp.add_option('max_iter', 3)       # Set the maximum number of iterations.  This should converge very quickly 
+  nlp.add_option('max_iter', 2)       # Set the maximum number of iterations.  This should converge very quickly 
   nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
   #nlp.add_option("derivative_test", "first-order")  # Check the gradient
   
@@ -330,7 +330,7 @@ def do_optimize(initial_conditions):
     #Convert to tensors
     count = 0
     cnorms = torch.ones((1,1), dtype=torch.float64, device=device)*10.0
-    ics = torch.tensor(initial_conditions, dtype=torch.float64, device=device).reshape(1, 2)
+    ics = torch.tensor(initial_conditions, dtype=torch.float64, device=device).reshape(1, 1)
     xopt = torch.tensor([[p1, ft]], dtype=torch.float64, device=device)
     print(f"Initial guess: {xopt}")
     print(f"Initial lambdap: {lambdap}")
