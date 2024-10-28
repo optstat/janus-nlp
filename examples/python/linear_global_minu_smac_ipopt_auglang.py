@@ -19,7 +19,7 @@ dtype = torch.double  # Ensure that we use double precision
 x10 = 0.0
 #End point in the slow region
 x1f = 1.0
-p10min, p10max = -100.0, 100.0
+p10min, p10max = -10.0, 10.0
 ft = 1.0
 #Linear system parameters
 a = 1.0
@@ -262,7 +262,7 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
 @ray.remote
 def do_optimize(initial_conditions):
   global mup, x1f
-  mup = 0.01
+  mup = 0.001
   count = 0
   p1 = 0.0
   ########################################################
@@ -306,7 +306,7 @@ def do_optimize(initial_conditions):
     else:
       converged = False
       print(f"Applying case 2 cnorms: {cnorms} count {count} initial conditions: {initial_conditions}")
-      mup=mup*100.0
+      mup=mup*10.0
       #Keep track of the best solution in case the optimization does not converge
       if cnorms < cnorms_global:
         cnorms_global = cnorms
