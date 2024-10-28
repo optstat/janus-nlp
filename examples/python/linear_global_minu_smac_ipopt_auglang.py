@@ -19,7 +19,7 @@ dtype = torch.double  # Ensure that we use double precision
 x10 = 0.0
 #End point in the slow region
 x1f = 1.0
-p10min, p10max = -10.0, 10.0
+p10min, p10max = -1.0, 1.0
 ft = 1.0
 #Linear system parameters
 a = 1.0
@@ -227,7 +227,7 @@ def dyns_jacobian(t, y):
 def augmented_objective_function(p10, ft, mup, x10):
     t_span = (0, ft)
     y0 = [p10, x10, 0.0]
-    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac = dyns_jacobian ,rtol=1e-9, atol=1e-12)
+    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac = dyns_jacobian ,rtol=1e-9, atol=1e-9)
     p1fp = sol.y[0,-1]
     x1fp = sol.y[1,-1]
     Jfp = sol.y[2,-1]
@@ -279,7 +279,7 @@ def do_optimize(initial_conditions):
     count = count + 1
     # Define the configuration space
     cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
-    scenario = Scenario(cs, deterministic=False, n_trials=5000)
+    scenario = Scenario(cs, deterministic=False, n_trials=1000)
   
     optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
 
@@ -292,10 +292,11 @@ def do_optimize(initial_conditions):
     t_span = (0, ft)
     y0 = [p1, initial_conditions[0], 0.0]
     #Check if the solution is close to the final point
-    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-6, atol=1e-9)
+    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-9, atol=1e-9)
     x1fp = sol.y[0,-1]
     cs = np.asarray([x1fp-x1f])
     cnorms = np.linalg.norm([x1fp-x1f])
+    print(f'cnorms from ivp: {cnorms}')
 
 
     if cnorms < 1e-3:
@@ -425,7 +426,7 @@ if __name__ == "__main__":
     p10 = phat[i,0].item()
     t_span = (0, ft)
     y0 = [p10, x10, 0.0]
-    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac = dyns_jacobian ,rtol=1e-9, atol=1e-12)
+    sol = solve_ivp(dyns_aug, t_span, y0, method='Radau', jac = dyns_jacobian ,rtol=1e-9, atol=1e-9)
     p1fp = sol.y[0,-1]
     x1fp = sol.y[1,-1]
     Jfp  = sol.y[2,-1]
@@ -435,7 +436,7 @@ if __name__ == "__main__":
       t_span = (0, ft)
       y0 = [p1fp, ics[i,0]]
       print(f"Initial conditions using solve_ivp: {y0}")
-      sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',jac=dyns_jacobian, rtol=1e-9, atol=1e-12)
+      sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',jac=dyns_jacobian, rtol=1e-9, atol=1e-9)
       p1fp = sol.y[0,-1]
       x1fp = sol.y[1,-1]
       print(f"x1fp from solve_ivp: {x1fp}")

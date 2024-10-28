@@ -559,7 +559,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol, target_value=1.0e-6):
   nlp.add_option('acceptable_tol', acc_tol)  # Set tolerance for acceptable objective value
   nlp.add_option('acceptable_iter', 0)  # Allow IPOPT to stop immediately when an acceptable solution is found
   nlp.add_option('print_level', 5)          # Set print level to 5
-  nlp.add_option('max_iter', 3)       # Set the maximum number of iterations.  This should converge very quickly 
+  nlp.add_option('max_iter', 1)       # Set the maximum number of iterations.  This should converge very quickly 
   nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
   #nlp.add_option("derivative_test", "first-order")  # Check the gradient
   
@@ -1016,7 +1016,7 @@ def augmented_opt(iteration=0, numSamples=2):
 if __name__ == "__main__":
   ray.init()
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(1, 100)
+  ics, phat = augmented_opt(2, 100)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")
