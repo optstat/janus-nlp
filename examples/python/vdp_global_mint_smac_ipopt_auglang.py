@@ -1016,7 +1016,7 @@ def augmented_opt(iteration=0, numSamples=2):
 if __name__ == "__main__":
   ray.init()
   #Modify the iteration number to generate different initial conditions
-  ics, phat = augmented_opt(2, 100)
+  ics, phat = augmented_opt(3, 100)
   ray.shutdown()
   print(f"Initial conditions: {ics}")
   print(f"BO results: {phat}")

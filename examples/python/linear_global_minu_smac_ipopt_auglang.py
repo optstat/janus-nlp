@@ -19,7 +19,7 @@ dtype = torch.double  # Ensure that we use double precision
 x10 = 0.0
 #End point in the slow region
 x1f = 1.0
-p10min, p10max = -1.0, 1.0
+p10min, p10max = -100.0, 100.0
 ft = 1.0
 #Linear system parameters
 a = 1.0
