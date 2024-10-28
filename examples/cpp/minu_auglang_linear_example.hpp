@@ -246,9 +246,9 @@ namespace janus
               
               auto errors = torch::cat({c1x.r}, 1);
               auto error_norm = torch::cat({c1x.r}, 1).norm();
-              //The jacobian is block diagonal
+              //The jacobian is block diagonal  
               auto jac = torch::zeros({M, 1, 1}, x.options());
-              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 2)})); // p1
+              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 1)})); // p1
 
            
               return std::make_tuple(f.r, grads, errors, error_norm, jac);
