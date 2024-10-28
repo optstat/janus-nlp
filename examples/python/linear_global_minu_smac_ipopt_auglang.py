@@ -198,7 +198,9 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
 
   
 
-
+#H = p1*(a*x1+b*u)+0.5*u^2
+#ustar = -b*p1
+#dp1/dt = a*p1
 def dyns_aug(t, y):
     p1 = y[0]
     x1 = y[1]
@@ -261,7 +263,7 @@ def initialize_smac_with_initial_conditions(scenario, initial_condition):
 
 @ray.remote
 def do_optimize(initial_conditions):
-  global mup, x1f
+  global mup, x1f,ft
   mup = 0.001
   count = 0
   p1 = 0.0
@@ -293,7 +295,7 @@ def do_optimize(initial_conditions):
     y0 = [p1, initial_conditions[0], 0.0]
     #Check if the solution is close to the final point
     sol = solve_ivp(dyns_aug, t_span, y0, method='Radau',rtol=1e-9, atol=1e-9)
-    x1fp = sol.y[0,-1]
+    x1fp = sol.y[1,-1]
     cs = np.asarray([x1fp-x1f])
     cnorms = np.linalg.norm([x1fp-x1f])
     print(f'cnorms from ivp: {cnorms}')
