@@ -165,6 +165,12 @@ namespace janus
                                                const torch::Tensor &mup,           
                                                const torch::Tensor &params)
             {
+              std::cerr << "Starting the augmented Langrangian calculation" << std::endl;
+              std::cerr << "xic=" << xic << std::endl;
+              std::cerr << "x=" << x << std::endl;
+              std::cerr << "lambdap=" << lambdap << std::endl;
+              std::cerr << "mup=" << mup << std::endl;
+              std::cerr << "params=" << params << std::endl;
               // set the device
               // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
               int M = x.size(0);
