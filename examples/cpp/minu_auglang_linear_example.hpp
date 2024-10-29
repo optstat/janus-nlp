@@ -1,5 +1,5 @@
-#ifndef MINT_AUGLANG_LINEAR_EXAMPLE_HPP
-#define MINT_AUGLANG_LINEAR_EXAMPLE_HPP
+#ifndef MINU_AUGLANG_LINEAR_EXAMPLE_HPP
+#define MINU_AUGLANG_LINEAR_EXAMPLE_HPP
 /**
  * Use the Linear 1D example from Ross 2.9.1
  * The system minimizes 1/2 \int u^2 dt
