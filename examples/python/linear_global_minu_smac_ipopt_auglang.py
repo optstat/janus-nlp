@@ -52,6 +52,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
 
     def objective(self, x):
       xt = torch.tensor(x).reshape(self.M,1)
+      ftt = torch.tensor([[ft]], dtype=torch.float64)
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
 
       janus_nlp.linear_minu_set_x0(self.xics[:,0])
@@ -63,7 +64,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       print(f"Setting up the problem with lambdap= {self.lambdap}.")
       print(f"Setting up the problem with mup= {self.mup}.")
       print(f"Setting up the problem with params= {params}.")
-      [obj, grads, errors, errors_norm, jac] = janus_nlp.linear_minu_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
+      [obj, grads, errors, errors_norm, jac] = janus_nlp.linear_minu_auglangr_propagate(self.xics, xt, ftt, self.lambdap, self.mup, params)
       res = obj.sum().flatten().numpy()
       if res < self.obj:
          self.obj = res
@@ -74,6 +75,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
     
     def gradient(self, x):
       xt = torch.tensor(x).reshape(self.M,1)
+      ftt = torch.tensor([[ft]], dtype=torch.float64)
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
 
       janus_nlp.linear_minu_set_x0(self.xics[:,0])
@@ -81,7 +83,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       janus_nlp.linear_minu_set_a(a)
       janus_nlp.linear_minu_set_b(b)
  
-      [obj, grads, errors, errors_norm, jac] = janus_nlp.linear_minu_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
+      [obj, grads, errors, errors_norm, jac] = janus_nlp.linear_minu_auglangr_propagate(self.xics, xt, ftt, self.lambdap, self.mup, params)
 
 
 
