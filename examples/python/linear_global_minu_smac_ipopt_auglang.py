@@ -28,6 +28,8 @@ b = 1.0
 
 os.environ["MKL_ENABLE_INSTRUCTIONS"] = "SSE2"
 os.environ["MKL_THREADING_LAYER"] = "GNU"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["DFTI_NUMBER_OF_USER_THREADS"] = "1"
 
 
 
