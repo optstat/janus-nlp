@@ -182,7 +182,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
   nlp.add_option('acceptable_tol', acc_tol)  # Set tolerance for acceptable objective value
   nlp.add_option('acceptable_iter', 0)  # Allow IPOPT to stop immediately when an acceptable solution is found
-  nlp.add_option('print_level', 5)          # Set print level to 5
+  nlp.add_option('print_level', 10)          # Set print level to 5
   nlp.add_option('max_iter', 2)       # Set the maximum number of iterations.  This should converge very quickly 
   nlp.add_option('mu_strategy', 'adaptive')  # Set the barrier parameter strategy to adaptive
   #nlp.add_option("derivative_test", "first-order")  # Check the gradient
