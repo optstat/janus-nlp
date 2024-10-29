@@ -156,8 +156,9 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   params = torch.tensor([problem.rtol, problem.atol], dtype=torch.float64)
   janus_nlp.linear_minu_set_a(a)
   janus_nlp.linear_minu_set_b(b)
+  ftt = torch.tensor([[ft]], dtype=torch.float64)
   [res, grads, cs, cnorm, jac] = \
-                              janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
+                              janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, ftt, problem.lambdap, problem.mup, params)
 
   scaling_factor = 1.0/res.abs().item()
   print(f'Problem scaling_factor={scaling_factor}')
@@ -198,7 +199,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   janus_nlp.linear_minu_set_a(a)
   janus_nlp.linear_minu_set_b(b) 
   [res, grads, cs, cnorm, jac] = \
-                              janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, problem.lambdap, problem.mup, params)
+                              janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, ftt, problem.lambdap, problem.mup, params)
 
   return res, sol, grads, cs, cnorm, jac
 
