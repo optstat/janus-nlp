@@ -160,8 +160,6 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   [res, grads, cs, cnorm, jac] = \
                               janus_nlp.linear_minu_auglangr_propagate(problem.xics, x, ftt, problem.lambdap, problem.mup, params)
 
-  scaling_factor = 1.0/res.abs().item()
-  print(f'Problem scaling_factor={scaling_factor}')
   nlp = cyipopt.Problem(
             n=M,
             m=0,
@@ -181,7 +179,6 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
   # Set the options
   nlp.add_option('hessian_approximation', 'limited-memory')  # Enable limited memory BFGS (L-BFGS)
   nlp.add_option('nlp_scaling_method', 'gradient-based') #Use a gradient based method for scaling
-  nlp.add_option('obj_scaling_factor', scaling_factor) #Set the scaling factor
   nlp.add_option('linear_solver', 'mumps')  # Set MUMPS as the linear solver
   nlp.add_option('acceptable_tol', acc_tol)  # Set tolerance for acceptable objective value
   nlp.add_option('acceptable_iter', 0)  # Allow IPOPT to stop immediately when an acceptable solution is found
