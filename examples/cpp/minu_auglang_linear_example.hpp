@@ -161,17 +161,17 @@ namespace janus
                        torch::Tensor> 
                        minu_auglangr_propagate(const torch::Tensor &xic,
                                                const torch::Tensor &x,  //This contains the costate and final time
+                                               const torch::Tensor &ftt,
                                                const torch::Tensor &lambdap,
                                                const torch::Tensor &mup,           
                                                const torch::Tensor &params)
             {
-              std::cerr << "Starting the augmented Langrangian calculation" << std::endl;
-              std::cerr << "xic=" << xic << std::endl;
-              std::cerr << "x=" << x << std::endl;
-              std::cerr << "lambdap=" << lambdap << std::endl;
-              std::cerr << "mup=" << mup << std::endl;
-              std::cerr << "params=" << params << std::endl;
-              exit(1);
+              std::cerr << "Starting the augmented Langrangian calculation";
+              std::cerr << "xic=" << xic;
+              std::cerr << "x=" << x;
+              std::cerr << "lambdap=" << lambdap;
+              std::cerr << "mup=" << mup;
+              std::cerr << "params=" << params;
               // set the device
               // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
               int M = x.size(0);
@@ -193,7 +193,7 @@ namespace janus
               p10td.d.index_put_({Slice(), 0, 0}, 1.0); // This is an independent variable whose sensitivity we are interested in
               auto x10td = TensorDual(xic.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
               x10td.d.index_put_({Slice(), 0, 1}, 1.0); // This is an independent variable whose sensitivity we are interested in
-              auto ft = TensorDual(x.index({Slice(), Slice(1, 2)}), torch::zeros({M, 1, D}, x.options()));
+              auto ft = TensorDual(ftt.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
               ft.d.index_put_({Slice(), 0, 3}, 1.0); // Set the dependency to itself
 
               TensorDual y = TensorDual(torch::zeros({M, N}, x.options()),
