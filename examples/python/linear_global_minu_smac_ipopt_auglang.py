@@ -55,7 +55,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
 
       janus_nlp.linear_minu_set_x0(self.xics[:,0])
-      janus_nlp.linear_minu_set_xf(x1f)
+      janus_nlp.linear_minu_set_xf(torch.tensor(x1f))
       janus_nlp.linear_minu_set_a(a)
       janus_nlp.linear_minu_set_b(b)
  
@@ -73,7 +73,7 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       params = torch.tensor([self.rtol, self.atol], dtype=torch.float64)
 
       janus_nlp.linear_minu_set_x0(self.xics[:,0])
-      janus_nlp.linear_minu_set_xf(x1f)
+      janus_nlp.linear_minu_set_xf(torch.tensor(x1f))
       janus_nlp.linear_minu_set_a(a)
       janus_nlp.linear_minu_set_b(b)
  
