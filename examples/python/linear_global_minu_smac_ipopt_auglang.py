@@ -293,7 +293,7 @@ def do_optimize(initial_conditions):
     count = count + 1
     # Define the configuration space
     cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
-    scenario = Scenario(cs, deterministic=False, n_trials=100)
+    scenario = Scenario(cs, deterministic=False, n_trials=1000)
   
     optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
 
