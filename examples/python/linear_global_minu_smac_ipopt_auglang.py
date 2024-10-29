@@ -58,7 +58,11 @@ class LinearAugPMPIpopt(cyipopt.Problem):
       janus_nlp.linear_minu_set_xf(torch.tensor(x1f))
       janus_nlp.linear_minu_set_a(a)
       janus_nlp.linear_minu_set_b(b)
- 
+      print(f"Setting up the problem with initial conditions {self.xics}.")
+      print(f"Setting up the problem with xt= {xt}.")
+      print(f"Setting up the problem with lambdap= {self.lambdap}.")
+      print(f"Setting up the problem with mup= {self.mup}.")
+      print(f"Setting up the problem with params= {params}.")
       [obj, grads, errors, errors_norm, jac] = janus_nlp.linear_minu_auglangr_propagate(self.xics, xt, self.lambdap, self.mup, params)
       res = obj.sum().flatten().numpy()
       if res < self.obj:
