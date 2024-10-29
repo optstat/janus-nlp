@@ -171,6 +171,7 @@ namespace janus
               std::cerr << "lambdap=" << lambdap << std::endl;
               std::cerr << "mup=" << mup << std::endl;
               std::cerr << "params=" << params << std::endl;
+              exit(1)
               // set the device
               // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
               int M = x.size(0);
