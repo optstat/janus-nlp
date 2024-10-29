@@ -142,7 +142,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
 
 
 
-  x0 = x.flatten().numpy().tolist()
+  x0 = x[:,0].flatten().numpy().tolist()
   print(f"Initial guess: {x0}")
   print(f'len(x0): {len(x0)}')
   print(f'len(xlb): {len(xlb)}')
