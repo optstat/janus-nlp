@@ -195,7 +195,7 @@ def batched_augLang_ipopt(xics, x, lambdap, mup, tol):
      #Get the best solution arrived at during the iterations
      sol = problem.sol
   print(f"Received info: {info}")
-  sol = torch.tensor(sol).reshape((M,3))
+  sol = torch.tensor(sol).reshape((M,1))
   janus_nlp.linear_minu_set_a(a)
   janus_nlp.linear_minu_set_b(b) 
   [res, grads, cs, cnorm, jac] = \
