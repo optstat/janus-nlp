@@ -30,7 +30,9 @@ os.environ["MKL_ENABLE_INSTRUCTIONS"] = "SSE2"
 os.environ["MKL_THREADING_LAYER"] = "GNU"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["DFTI_NUMBER_OF_USER_THREADS"] = "1"
-
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_DYNAMIC"] = "FALSE"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 
 
@@ -284,7 +286,7 @@ def do_optimize(initial_conditions):
     count = count + 1
     # Define the configuration space
     cs = ConfigurationSpace(name="vpd config space", space={"p1": Float("p1", bounds=(p10min, p10max), default=p1) })
-    scenario = Scenario(cs, deterministic=False, n_trials=1000)
+    scenario = Scenario(cs, deterministic=False, n_trials=100)
   
     optimizer = initialize_smac_with_initial_conditions(scenario, initial_conditions)
 
