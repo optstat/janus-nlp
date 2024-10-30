@@ -420,7 +420,7 @@ if __name__ == "__main__":
   for j in range(100):
     ray.init()
     #Modify the iteration number to generate different initial conditions
-    ics, phat = augmented_opt(j,100)
+    ics, phat = augmented_opt(100+j,100)
     ray.shutdown()
     print(f"Initial conditions: {ics}")
     print(f"BO results: {phat}")
