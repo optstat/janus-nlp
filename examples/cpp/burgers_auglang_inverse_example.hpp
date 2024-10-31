@@ -1,5 +1,5 @@
-#ifndef MINU_AUGLANG_LINEAR_EXAMPLE_HPP
-#define MINU_AUGLANG_LINEAR_EXAMPLE_HPP
+#ifndef BURGERS_AUGLANG_INVERSE_EXAMPLE_HPP
+#define BURGERS_AUGLANG_INVERSE_EXAMPLE_HPP
 /**
  * Solution of the burgers equation using the augmented Langrangian mathod
  * assuming a guess has been generated for the initial conditions
@@ -9,7 +9,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <torch/autograd.h>
-#include <janus/radauted.hpp>
+#include <janus/radaute.hpp>// Radau5 integrator
+#include <janus/radauted.hpp>//Radau integrator with dual number support
 
 using namespace janus;
 namespace py = pybind11;
@@ -27,6 +28,8 @@ namespace janus
           namespace auglang // Augmented Langrangian
           {
 
+            double nu; // The viscosity parameter
+
             /**
              * Radau example using the burgers PDE 
              * Using the dual number approach to calcuate the sensitivities
@@ -34,76 +37,12 @@ namespace janus
             using Slice = torch::indexing::Slice;
             // Global parameters with default values
             torch::Tensor xf, xm1, xNp1;
-            double nu = 0.1, h = 0.01;
+            double nu = 0.1, dx = 0.01;
             int MaxNbrStep = 10000; // Limit the number of steps to avoid long running times
  
+            
 
-            void set_xf(const torch::Tensor &xf)
-            {
-              x1f = xf;
-            }
-
-            void set_xm1(const torch::Tensor &xm1v)
-            {
-              xm1 = xm1v;
-            }
-
-            void set_xNp1(const torch::Tensor &xNp1v)
-            {
-              xNp1 = xNp1v;
-            }
-
-            void set_nu(double nu_val)
-            {
-              nu = nu_val;
-            }
-
-            void set_h(double h_val)
-            {
-              h = h_val;
-            }
-
-
-
-            /**
-             * Dynamics calculated for the augmented Langrangian formulation
-             */
-            TensorDual lineardyns_Lang(const TensorDual &t,
-                                       const TensorDual &y,
-                                       const TensorDual &params)
-            {
-              int N= y.r.size(1);
-              auto dudts = {};
-              TensorDual um1, u, up1;
-              for ( int i=0; i < N;i++)
-              {
-                if ( i==0)
-                {
-                   um1 = xm1; 
-                }
-                else 
-                {
-                  um1 = y.index({Slice(), Slice(i-1, i)});
-                }
-                auto un = y.index({Slice(), Slice(i, i+1)});
-                if ( i==N-1)
-                {
-                   up1 = xNp1; 
-                }
-                else 
-                {
-                  up1 = y.index({Slice(), Slice(i+1, i+2)});
-                }
-                dudt = -un*(un-um1)/h + nu*(up1-2*un+um1)/h/h;
-                dudts.push_back(dudt);
-              }
-
-              auto real_dyns = TensorDual::cat(dudts);
-
-              return real_dyns;
-            }
-
-
+            //Generate a test wrapper for the dynamics
             TensorMatDual jac_Lang(const TensorDual &t,
                                    const TensorDual &y,
                                    const TensorDual &params)
@@ -114,6 +53,8 @@ namespace janus
                                        torch::zeros({y.r.size(0), N, N, D}, torch::kFloat64));
               auto dudts = {};
               TensorDual um1, u, up1;
+              auto xm1 = y.index({Slice(), Slice(N-1, N)});
+              auto xNp1 = y.index({Slice(), Slice(0, 1)});
               for ( int i=0; i < N;i++)
               {
                 if ( i==0)
@@ -155,42 +96,88 @@ namespace janus
               return jac;
             }
 
-
-
-
-
-            /**
-             * Radau example using a stiff Burgers equation
-             * with sensitivity calculations utilizing dual numbers
-             * to calculate the gradients of the augmented Langrangian function
-             * The function returns the residuals of the expected
-             * end state wrt x1f x2f and final Hamiltonian value
-             * using p20 and tf as the input variables (x)
-             * The relationship is defined by the necessary conditions
-             * of optimality as defined by the Variational approach to
-             * optimal control
-             */
-            std::tuple<torch::Tensor, torch::Tensor, 
-                       torch::Tensor, torch::Tensor,
-                       torch::Tensor> 
-                       minu_auglangr_propagate(const torch::Tensor &xic,
-                                               const torch::Tensor &x,  //This contains the costate and final time
-                                               const torch::Tensor &ftt,
-                                               const torch::Tensor &lambdap,
-                                               const torch::Tensor &mup,           
-                                               const torch::Tensor &params)
+            torch::Tensor burgers_dyns(const torch::Tensor &t,
+                                       const torch::Tensor &y,
+                                       const torch::Tensor &params)
             {
-              std::cerr << "Starting the augmented Langrangian calculation";
-              std::cerr << "xic=" << xic;
-              std::cerr << "x=" << x;
-              std::cerr << "lambdap=" << lambdap;
-              std::cerr << "mup=" << mup;
-              std::cerr << "params=" << params;
-              // set the device
-              // torch::Device device(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU);
-              int M = x.size(0);
-              int N = 3; // Length of the state space vector in order [p1, x1, J]
-              int D = 4; // Length of the dual vector in order [p1, x1, J, tf]
+              int M = y.size(0);
+              int N = y.size(1);
+              int Nadj = N+2;  //We will need to match the boundary conditions
+
+              std::vector dudts = {};
+              for ( int i=0; i < N; i++)
+              {
+                torch::Tensor um1, un, up1;
+                if ( i==0)
+                {
+                   um1 = y.index({Slice(), N-1});
+                }
+                else 
+                {
+                  um1 = y.index({Slice(), i-1});
+                }
+                if ( i == N-1)
+                {
+                   up1 = y.index({Slice(), 0});
+                }
+                else 
+                {
+                  up1 = y.index({Slice(), i+1});
+                }
+                auto un = y.index({i});
+                auto dudt = -un*(un-um1)/dx + nu*(up1-2*un+um1)/dx/dx;
+                dudts.push_back(dudt);
+              }
+              return torch::cat(dudts,1);
+            }
+
+            torch::Tensor burgers_jac(const torch::Tensor &t,
+                                      const torch::Tensor &y,
+                                      const torch::Tensor &params)
+            {
+              int M = y.size(0);
+              int N = y.size(1);
+              int Nadj = N+2;  //We will need to match the boundary conditions
+              auto x0m1 = torch.index({Slice(), Slice(N-1:N)}).clone();
+              auto x0Np1 = torch.index({Slice(), Slice(0, 1)}).clone();
+              auto jac = torch::zeros({M, N, N}, y.options());
+              std::vector dudts = {};
+              for ( int i=0; i < N; i++)
+              {
+                torch::Tensor um1, un, up1;
+                if ( i==0)
+                {
+                   um1 = y.index({Slice(), N-1});
+                }
+                else 
+                {
+                  um1 = y.index({Slice(), i-1});
+                }
+                if ( i == N-1)
+                {
+                   up1 = y.index({Slice(), 0});
+                }
+                else 
+                {
+                  up1 = y.index({Slice(), i+1});
+                }
+                auto un = y.index({i});
+                //auto dudt = -un*(un-um1)/dx + nu*(up1-2*un+um1)/dx/dx;
+                jac.index_put_({Slice(), i, i-1}, un/dx);
+                jac.index_put_({Slice(), i, i}, -2*un/dx-2* nu/dx/dx);
+                jac.index_put_({Slice(), i, i+1}, nu/dx/dx);
+              }
+              return torch::cat(dudts,1);
+
+            }
+
+
+            torch::Tensor forward(const torch::Tensor& x0, //The initial conditions in a batch tensor
+                                  const torch::Tensor& ft, //The final time for whole batch
+                                  double nup,
+                                  double dxp)
+            {
+
               double rtol = 1e-3;
               double atol = 1e-6;
               if (params.dim() == 1)
@@ -203,38 +190,23 @@ namespace janus
                 rtol = params.index({Slice(), 0}).item<double>();
                 atol = params.index({Slice(), 1}).item<double>();
               }
-              auto p10td = TensorDual(x.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-              p10td.d.index_put_({Slice(), 0, 0}, 1.0); // This is an independent variable whose sensitivity we are interested in
-              auto x10td = TensorDual(xic.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-              x10td.d.index_put_({Slice(), 0, 1}, 1.0); // This is an independent variable whose sensitivity we are interested in
-              auto ft = TensorDual(ftt.index({Slice(), Slice(0, 1)}), torch::zeros({M, 1, D}, x.options()));
-              ft.d.index_put_({Slice(), 0, 3}, 1.0); // Set the dependency to itself
 
-              TensorDual y = TensorDual(torch::zeros({M, N}, x.options()),
-                                        torch::zeros({M, N, D}, x.options()));
-              TensorDual one = TensorDual(torch::ones({M, 1}, x.options()), torch::zeros({M, 1, D}, x.options()));
-
-              y.index_put_({Slice(), Slice(0, 1)}, p10td);       // p1
-              y.index_put_({Slice(), Slice(1, 2)}, x10td);   // x1
-              auto y0 = y.clone();                             // Copy of the initial conditions
-
-              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-              TensorDual tspan = TensorDual(torch::rand({M, 2}, x.options()), torch::zeros({M, 2, D}, x.options()));
-              tspan.r.index_put_({Slice(), Slice(0, 1)}, 0.0);
+              nu = nup;
+              dx = dxp;
+              auto y0 = x0;
+              torch::Tensor tspan = torch::zeros({0, 2}, x0.options());
+              tspan.index_put_({Slice(),Slice(0,1)}, 0.0);
               // tspan.r.index_put_({Slice(), 1}, 2*((3.0-2.0*std::log(2.0))*y.r.index({Slice(), 2}) + 2.0*3.141592653589793/1000.0/3.0));
               tspan.index_put_({Slice(), Slice(1, 2)}, ft);
-              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-              // Create a tensor of size 2x2 filled with random numbers from a uniform distribution on the interval [0,1)
-              janus::OptionsTeD options = janus::OptionsTeD(); // Initialize with default options
+              janus::OptionsTe options = janus::OptionsTe(); // Initialize with default options
               options.RelTol = torch::tensor({rtol}, x.options());
               options.AbsTol = torch::tensor({atol}, x.options());
 
               options.MaxNbrStep = MaxNbrStep;
               auto tspanc = tspan.clone();
               auto yc = y.clone();
-              auto paramsc = TensorDual::empty_like(y);
-
-              janus::RadauTeD r(lineardyns_Lang, jac_Lang, tspanc, yc, options, paramsc); // Pass the correct arguments to the constructor
+              auto paramsc = torch::zeros_like(y);
+              janus::RadauTeD r(burgers_dyns, burgers_jac, tspan, yc, options, paramsc); // Pass the correct arguments to the constructor
               // Call the solve method of the Radau5 class
               auto rescode = r.solve();
               //Check the return codes
@@ -245,35 +217,14 @@ namespace janus
                 std::cerr << "Solver failed to converge for some samples" << std::endl;
               }
               //Record the projected final values
-              auto p1pf = r.y.index({Slice(), Slice(0, 1)});
-              auto x1pf = r.y.index({Slice(), Slice(1, 2)});
+              auto res = r.yout
+              return res;
 
-              auto c1x = x1pf - x1f;
-
-              //auto [u1starf, u2starf] = calc_control(p1pf, p2pf, x1pf, x2pf);
-
-              
-
-              // The Hamiltonian is zero at the terminal time
-              // in principle but this may not be the always the case
-              // Now add the augmented Lagrangian term
-              auto f = -TensorDual::einsum("mi, mi->mi",lambdap.index({Slice(), Slice(0,1)}),c1x)
-                       +(one+ 0.5*TensorDual::einsum("mi, mi->mi",mup,c1x.square())).log();
-
-
-              auto grads = torch::zeros_like(x);
-              grads.index_put_({Slice(), 0}, f.d.index({Slice(), 0, 0})); // p1
-              
-              
-              auto errors = torch::cat({c1x.r}, 1);
-              auto error_norm = torch::cat({c1x.r}, 1).norm();
-              //The jacobian is block diagonal  
-              auto jac = torch::zeros({M, 1, 1}, x.options());
-              jac.index_put_({Slice(), Slice(0, 1), Slice(0, 1)}, c1x.d.index({Slice(), Slice(0,1), Slice(0, 1)})); // p1
-
-           
-              return std::make_tuple(f.r, grads, errors, error_norm, jac);
             }
+
+
+
+
 
 
           }

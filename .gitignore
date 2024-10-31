@@ -38,6 +38,7 @@
 
 # IDE and editor configurations
 /.vscode
+/images/
 
 /janus_nlp/
 # Egg info directory
