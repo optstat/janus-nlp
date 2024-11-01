@@ -10,6 +10,7 @@
 #include "../../examples/cpp/mint_vdp_example.hpp"
 #include "../../examples/cpp/mint_auglang_vdp_example.hpp"
 #include "../../examples/cpp/minu_auglang_linear_example.hpp"
+#include "../../examples/cpp/burgers_auglang_inverse_example.hpp"
 
 namespace py = pybind11;
 
@@ -47,4 +48,5 @@ PYBIND11_MODULE(janus_nlp, m) {
     m.def("linear_minu_set_b", &janus::nlp::examples::linear::minu::auglang::set_b, "Set the constant b for the linear minu example");
     m.def("linear_minu_set_ft", &janus::nlp::examples::linear::minu::auglang::set_ft, "Set the constant b for the linear minu example");
     m.def("linear_minu_auglangr_propagate", &janus::nlp::examples::linear::minu::auglang::minu_auglangr_propagate, "Augmented Lagrangian and its gradients for the linear minu example");
+    m.def("burgers_forward", &janus::nlp::examples::burgers::inverse::auglang::forward, "Forward function for the burgers example");
 }
