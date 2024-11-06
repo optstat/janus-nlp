@@ -21,6 +21,31 @@ torch.manual_seed(1)
 torch.set_default_dtype(torch.float64)
 
 
+# Define a simple autoencoder
+class Autoencoder(nn.Module):
+    def __init__(self, input_dim, latent_dim):
+        super(Autoencoder, self).__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, latent_dim)
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, input_dim)
+        )
+    
+    def forward(self, x):
+        z = self.encoder(x)
+        x_recon = self.decoder(z)
+        return x_recon
+
+    def encode(self, x):
+        return self.encoder(x)
+
+    def decode(self, z):
+        return self.decoder(z)
 
 train_X = torch.rand(1000, 2) ** 2
 Y = 1 - (train_X - 0.5).norm(dim=-1, keepdim=True)
@@ -28,6 +53,21 @@ Y += 0.1 * torch.rand_like(Y)
 bounds = torch.stack([torch.zeros(2), 2 * torch.ones(2)])
 
 
+# Instantiate and train the autoencoder
+input_dim = train_X.shape[1]
+latent_dim = 2  # Set this based on the expected number of distinct features
+
+autoencoder = Autoencoder(input_dim=input_dim, latent_dim=latent_dim)
+optimizer = optim.Adam(autoencoder.parameters(), lr=1e-3)
+loss_fn = nn.MSELoss()
+
+# Training loop
+for epoch in range(1000):
+    optimizer.zero_grad()
+    reconstructed = autoencoder(train_X)
+    loss = loss_fn(reconstructed, train_X)
+    loss.backward()
+    optimizer.step()
 
 
 
@@ -87,28 +127,61 @@ class EnsembleLightGBMModel(Model):
         cov_matrix = torch.diag_embed(variance.expand(X.shape[0], self._num_outputs))
         mvn = MultivariateNormal(mean, cov_matrix)
         return GPyTorchPosterior(mvn)    
-# Instantiate the model with desired hyperparameters
-lightGBMModel = EnsembleLightGBMModel(num_models=20, num_leaves=31, n_estimators=100)
-lightGBMModel.fit(train_X, Y)
-best_f = Y.max().item() + 1e-4  # Add a small jitter to best_f
-optimize_acqf(
-    qLogExpectedImprovement(model=lightGBMModel, best_f=Y.max()),
-    bounds=bounds,
+
+# Encode the training data
+train_X_latent = autoencoder.encode(train_X).detach()
+
+# Modify the EnsembleLightGBMModel to operate on the encoded data
+class LatentEnsembleLightGBMModel(EnsembleLightGBMModel):
+    def fit(self, X: Tensor, y: Tensor) -> None:
+        # Convert latent space PyTorch tensors to numpy arrays
+        X_np = X.detach().cpu().numpy()
+        y_np = y.detach().cpu().numpy().squeeze()
+        for i, model in enumerate(self.models):
+            model.set_params(random_state=i)
+            model.fit(X_np, y_np)
+
+# Instantiate and fit the modified model on the latent data
+latent_model = LatentEnsembleLightGBMModel(num_models=20, num_leaves=31, n_estimators=100)
+latent_model.fit(train_X_latent, Y)
+
+
+# Define acquisition function in the latent space
+best_f = Y.max().item() + 1e-4
+acq_func = qLogExpectedImprovement(model=latent_model, best_f=best_f)
+
+# Optimize acquisition function to select next candidate in latent space
+bounds_latent = torch.stack([torch.zeros(latent_dim), torch.ones(latent_dim)])
+candidates_latent, _ = optimize_acqf(
+    acq_function=acq_func,
+    bounds=bounds_latent,
     q=1,
     num_restarts=5,
     raw_samples=10,
     options={"with_grad": False},
 )
 
-# Define the test points where you want to make predictions
-test_X = torch.rand(5, 2)** 2  # Example with 5 test points in a 2-dimensional space
+# Decode the candidate from latent space back to original space
+candidates = autoencoder.decode(candidates_latent).detach()
+new_Y = 1 - (candidates- 0.5).norm(dim=-1, keepdim=True)
+new_Y += 0.1 * torch.rand_like(new_Y)
+# Update training data with new evaluations
+train_X = torch.cat([train_X, candidates])
+Y = torch.cat([Y, new_Y])
 
-# Get the posterior, which includes the mean and variance
-posterior = lightGBMModel.posterior(test_X)
+# Encode updated data to latent space
+train_X_latent = autoencoder.encode(train_X).detach()
 
-# Extract mean and covariance from the posterior distribution
-mean = posterior.mean  # Mean predictions, shape: (5, 1)
-variance = posterior.variance  # Variance (uncertainty), shape: (5, 1)
+# Retrain the surrogate model in the latent space
+latent_model.fit(train_X_latent, Y)
+# Define test points and encode them to latent space
+test_X = torch.rand(5, 2) ** 2  # Example with 5 test points in the original 1000-dimensional space
+test_X_latent = autoencoder.encode(test_X)
+
+# Get posterior in the latent space
+posterior = latent_model.posterior(test_X_latent)
+mean = posterior.mean
+variance = posterior.variance
 
 print("Mean predictions:\n", mean)
 print("Uncertainty (variance):\n", variance)
