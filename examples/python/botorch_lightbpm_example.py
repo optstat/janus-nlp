@@ -93,3 +93,16 @@ optimize_acqf(
     raw_samples=10,
     options={"with_grad": False},
 )
+
+# Define the test points where you want to make predictions
+test_X = torch.rand(5, 2)** 2  # Example with 5 test points in a 2-dimensional space
+
+# Get the posterior, which includes the mean and variance
+posterior = lightGBMModel.posterior(test_X)
+
+# Extract mean and covariance from the posterior distribution
+mean = posterior.mean  # Mean predictions, shape: (5, 1)
+variance = posterior.variance  # Variance (uncertainty), shape: (5, 1)
+
+print("Mean predictions:\n", mean)
+print("Uncertainty (variance):\n", variance)
