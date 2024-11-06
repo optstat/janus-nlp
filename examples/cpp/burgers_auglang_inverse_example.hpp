@@ -54,7 +54,7 @@ namespace janus
                 TensorDual um1, un, up1;
                 if (i==0)
                 {
-                   um1 = y.index({Slice(), Slice(N-1, N)});
+                  um1 = y.index({Slice(), Slice(N-1, N)});
                 }
                 else 
                 {
